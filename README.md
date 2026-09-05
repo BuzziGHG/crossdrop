@@ -47,39 +47,5 @@ Wählen Sie einfach Ihr Betriebssystem aus und laden Sie die passende Version he
 
 ---
 
-<details>
-<summary>🛠️ Für Administratoren: Eigenen Server einrichten (IP: 82.29.5.240 / Port: 2603)</summary>
-
-<br>
-
-Falls Sie den zentralen Account- und VPN-Tunnel-Server auf Ihrem eigenen Linux-Server betreiben oder verwalten möchten:
-
-### 1. Docker auf dem Server installieren:
-```bash
-sudo apt update && sudo apt install -y git docker.io docker-compose-plugin
-sudo systemctl enable --now docker
-```
-
-### 2. Server starten (Port 2603):
-```bash
-git clone https://github.com/BuzziGHG/crossdrop.git /opt/crossdrop
-cd /opt/crossdrop/server
-docker compose up -d --build
-```
-
-### 3. Firewall freigeben:
-```bash
-sudo ufw allow 2603/tcp
-sudo ufw reload
-```
-
-- **Health-Check:** `curl http://82.29.5.240:2603/health`
-- **Swagger-Dokumentation:** `http://82.29.5.240:2603/docs`
-- Ausführliche Dokumentation: siehe [`docs/SERVER_SETUP.md`](docs/SERVER_SETUP.md).
-
-</details>
-
----
-
 ## Lizenz
 Entwickelt mit Flutter und FastAPI. Open Source lizenziert unter der MIT-Lizenz.
