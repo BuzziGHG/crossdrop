@@ -1,0 +1,17 @@
+﻿# Compiled output & packages
+*.zip
+*.apk
+*.deb
+*.exe
+dist-windows/
+build/
+.dart_tool/
+
+# Python & SQLite
+__pycache__/
+*.pyc
+*.db
+server/data/
+
+# Environment files
+.env
