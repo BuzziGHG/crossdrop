@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter/services.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -42,6 +43,7 @@ class UpdateInfo {
 
 class UpdateService {
   final String serverUrl;
+  static const MethodChannel _installerChannel = MethodChannel('com.crossdrop.app/installer');
 
   UpdateService({required this.serverUrl});
 
@@ -71,6 +73,23 @@ class UpdateService {
       debugPrint('Update-Check fehlgeschlagen: $e');
     }
     return null;
+  }
+
+  Future<bool> canInstallUnknownApps() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      final res = await _installerChannel.invokeMethod<bool>('canInstallUnknownApps');
+      return res ?? false;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<void> openInstallPermissionSettings() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _installerChannel.invokeMethod('openInstallPermissionSettings');
+    } catch (_) {}
   }
 
   Future<void> downloadAndInstall({
@@ -127,11 +146,8 @@ class UpdateService {
       onProgress(1.0);
       onDownloaded(targetFile.path);
 
-      // Trigger automatic installation
-      final installed = await installUpdate(targetFile.path);
-      if (!installed && Platform.isAndroid) {
-        onError('Update gespeichert in "Downloads" (${targetFile.path}). Bitte dort antippen oder "Unbekannte Apps installieren" für CrossDrop erlauben.');
-      }
+      // Attempt to launch installer immediately
+      await installUpdate(targetFile.path);
     } catch (e) {
       onError('Fehler beim Herunterladen des Updates: $e');
     }
@@ -146,6 +162,13 @@ class UpdateService {
       }
 
       if (Platform.isAndroid) {
+        try {
+          final res = await _installerChannel.invokeMethod<bool>('installApk', {'filePath': filePath});
+          if (res == true) return true;
+        } catch (e) {
+          debugPrint('Native installer channel error: $e');
+        }
+
         final result = await OpenFilex.open(
           filePath,
           type: 'application/vnd.android.package-archive',

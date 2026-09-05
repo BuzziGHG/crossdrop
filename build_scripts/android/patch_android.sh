@@ -10,6 +10,15 @@ cd "$CLIENT_DIR/android"
 # Copy custom AndroidManifest with LAN/VPN permissions
 cp "$SCRIPT_DIR/AndroidManifest.xml" app/src/main/AndroidManifest.xml
 
+# Copy FileProvider paths XML
+mkdir -p app/src/main/res/xml
+cp "$SCRIPT_DIR/filepaths.xml" app/src/main/res/xml/filepaths.xml
+
+# Copy custom MainActivity with native package installer channel
+mkdir -p app/src/main/kotlin/com/crossdrop/crossdrop
+cp "$SCRIPT_DIR/MainActivity.kt" app/src/main/kotlin/com/crossdrop/crossdrop/MainActivity.kt
+rm -f app/src/main/java/com/crossdrop/crossdrop/MainActivity.java || true
+
 # Copy permanent release keystore for reproducible APK signature
 cp "$SCRIPT_DIR/crossdrop.keystore" app/crossdrop.keystore
 

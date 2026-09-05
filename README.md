@@ -9,7 +9,7 @@
 
 ---
 
-## 📥 Downloads (Aktuelle Version 1.3.0)
+## 📥 Downloads (Aktuelle Version 1.3.1)
 
 Wählen Sie einfach Ihr Betriebssystem aus und laden Sie die passende Version herunter:
 
@@ -17,15 +17,20 @@ Wählen Sie einfach Ihr Betriebssystem aus und laden Sie die passende Version he
 | :--- | :--- | :--- | :--- |
 | 🪟 **Windows 10 / 11** | Setup-Installer (`.exe`) | [⬇️ CrossDrop-Windows-Setup.exe](https://github.com/BuzziGHG/crossdrop/releases/latest/download/CrossDrop-Windows-Setup.exe) *(Empfohlen)* | [⚡ Direktdownload](http://82.29.5.240:2603/api/updates/download/windows) |
 | 🪟 **Windows (Portabel)** | ZIP-Archiv | [⬇️ CrossDrop-Windows-x64.zip](https://github.com/BuzziGHG/crossdrop/releases/latest/download/CrossDrop-Windows-x64.zip) | - |
-| 🐧 **Linux (Debian / Ubuntu)** | Paket (`.deb`) | [⬇️ crossdrop_1.3.0_amd64.deb](https://github.com/BuzziGHG/crossdrop/releases/latest/download/crossdrop_1.3.0_amd64.deb) | [⚡ Direktdownload](http://82.29.5.240:2603/api/updates/download/linux) |
+| 🐧 **Linux (Debian / Ubuntu)** | Paket (`.deb`) | [⬇️ crossdrop_1.3.1_amd64.deb](https://github.com/BuzziGHG/crossdrop/releases/latest/download/crossdrop_1.3.1_amd64.deb) | [⚡ Direktdownload](http://82.29.5.240:2603/api/updates/download/linux) |
 | 📱 **Android** | App-Paket (`.apk`) | [⬇️ crossdrop-release.apk](https://github.com/BuzziGHG/crossdrop/releases/latest/download/crossdrop-release.apk) | [⚡ Direktdownload](http://82.29.5.240:2603/api/updates/download/android) |
 
 👉 **[Alle Downloads und Versionshinweise auf der Release-Seite ansehen](https://github.com/BuzziGHG/crossdrop/releases)**
 
 ---
 
-## ✨ Was ist neu in Version 1.3.0?
+## ✨ Was ist neu in Version 1.3.1?
 
+- 📱 **Android In-App Update & Paket-Installer behoben:**
+  - Natives Android `FileProvider` (`filepaths.xml`) für sichere Installation aus dem öffentlichen Downloads-Ordner konfiguriert.
+  - Eigener nativer MethodChannel zur zuverlässigen Übergabe an den Android-System-Installer (`ACTION_VIEW`).
+  - Automatisches Öffnen der Systemeinstellungen für *"Unbekannte Apps installieren"*, falls die Berechtigung noch nicht erteilt wurde.
+  - Das Update-Fenster bleibt nach dem 100%-Download geöffnet und bietet nun klare Buttons: **[ Jetzt installieren ]** und **[ Berechtigung prüfen ]**.
 - 💾 **Zero-Disk In-Memory Streaming Relay:**
   Dateien werden nicht mehr auf der Festplatte des Servers zwischengespeichert! Der Server fungiert als reine In-Memory Pipeline (`RelayPipe` mit ~1 MB Puffer). Selbst Dateien mit 100 GB oder mehr verbrauchen **0 Byte Server-Festplatte** und überlasten niemals den Speicher.
 - 📊 **100 % synchrone Live-Fortschrittsanzeige:**

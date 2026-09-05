@@ -216,6 +216,8 @@ class SettingsScreen extends StatelessWidget {
       builder: (ctx) {
         double downloadProgress = 0.0;
         bool isDownloading = false;
+        bool isDownloaded = false;
+        String? downloadedFilePath;
         String? errorMessage;
 
         return StatefulBuilder(
@@ -261,15 +263,59 @@ class SettingsScreen extends StatelessWidget {
                               style: const TextStyle(fontSize: 13, height: 1.4),
                             ),
                           ),
-                          if (isDownloading) ...[
+                          if (isDownloading && !isDownloaded) ...[
                             const SizedBox(height: 16),
                             LinearProgressIndicator(value: downloadProgress > 0 ? downloadProgress : null),
                             const SizedBox(height: 8),
                             Text('${(downloadProgress * 100).toStringAsFixed(0)}% heruntergeladen...'),
                           ],
+                          if (isDownloaded) ...[
+                            const SizedBox(height: 16),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.green.withOpacity(0.4)),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Row(
+                                    children: [
+                                      Icon(Icons.check_circle, color: Colors.green, size: 20),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Download 100% abgeschlossen!',
+                                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    Platform.isAndroid
+                                        ? 'Die Update-Datei liegt in "Downloads". Tippen Sie auf "Jetzt installieren".'
+                                        : 'Das Update wurde erfolgreich heruntergeladen. Tippen Sie auf "Jetzt installieren".',
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                           if (errorMessage != null) ...[
                             const SizedBox(height: 12),
-                            Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.red.withOpacity(0.3)),
+                              ),
+                              child: Text(
+                                errorMessage!,
+                                style: const TextStyle(color: Colors.red, fontSize: 12),
+                              ),
+                            ),
                           ],
                         ],
                       ),
@@ -277,40 +323,77 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 ),
               ),
-              actions: isDownloading
-                  ? []
-                  : [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text('Später'),
+              actions: isDownloading && !isDownloaded
+                  ? [
+                      Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: Text(
+                          '${(downloadProgress * 100).toStringAsFixed(0)}%',
+                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal),
+                        ),
                       ),
-                      FilledButton.icon(
-                        icon: const Icon(Icons.download),
-                        label: const Text('Jetzt aktualisieren'),
-                        onPressed: () {
-                          setDialogState(() {
-                            isDownloading = true;
-                            errorMessage = null;
-                          });
-                          service.downloadAndInstall(
-                            updateInfo: update,
-                            onProgress: (p) => setDialogState(() => downloadProgress = p),
-                            onDownloaded: (path) {
-                              Navigator.pop(ctx);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Update heruntergeladen. Installation wird gestartet...')),
+                    ]
+                  : isDownloaded
+                      ? [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Schließen'),
+                          ),
+                          if (Platform.isAndroid)
+                            TextButton.icon(
+                              icon: const Icon(Icons.security, size: 18),
+                              label: const Text('Berechtigung prüfen'),
+                              onPressed: () => service.openInstallPermissionSettings(),
+                            ),
+                          FilledButton.icon(
+                            icon: const Icon(Icons.system_update),
+                            label: const Text('Jetzt installieren'),
+                            style: FilledButton.styleFrom(backgroundColor: Colors.green),
+                            onPressed: () async {
+                              if (downloadedFilePath != null) {
+                                final ok = await service.installUpdate(downloadedFilePath!);
+                                if (!ok && Platform.isAndroid) {
+                                  setDialogState(() {
+                                    errorMessage = 'Installation konnte nicht gestartet werden. Bitte "Berechtigung prüfen" (Zulassen) antippen oder APK in "Downloads" öffnen.';
+                                  });
+                                }
+                              }
+                            },
+                          ),
+                        ]
+                      : [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Später'),
+                          ),
+                          FilledButton.icon(
+                            icon: const Icon(Icons.download),
+                            label: const Text('Jetzt aktualisieren'),
+                            onPressed: () {
+                              setDialogState(() {
+                                isDownloading = true;
+                                errorMessage = null;
+                              });
+                              service.downloadAndInstall(
+                                updateInfo: update,
+                                onProgress: (p) => setDialogState(() => downloadProgress = p),
+                                onDownloaded: (path) {
+                                  setDialogState(() {
+                                    isDownloading = false;
+                                    isDownloaded = true;
+                                    downloadedFilePath = path;
+                                  });
+                                },
+                                onError: (err) {
+                                  setDialogState(() {
+                                    isDownloading = false;
+                                    errorMessage = err;
+                                  });
+                                },
                               );
                             },
-                            onError: (err) {
-                              setDialogState(() {
-                                isDownloading = false;
-                                errorMessage = err;
-                              });
-                            },
-                          );
-                        },
-                      ),
-                    ],
+                          ),
+                        ],
             );
           },
         );
