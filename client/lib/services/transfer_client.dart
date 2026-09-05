@@ -339,7 +339,20 @@ class TransferClient {
                 : (item.speedBytesPerSecond * 0.4 + currentSpeed * 0.6);
             lastCheckBytes = sentBytes;
             lastTime = now;
+            item.errorMessage = 'Phase 1/2: Datei wird an Server übertragen...';
             onProgress(item);
+
+            // Broadcast real-time upload progress to receiver over WebSocket tunnel
+            if (vpnTunnel != null && vpnTunnel.isConnected) {
+              vpnTunnel.sendThroughTunnel({
+                'type': 'relay_sender_progress',
+                'task_id': taskId,
+                'sent_bytes': sentBytes,
+                'total_bytes': fileSize,
+                'speed': item.speedBytesPerSecond,
+                'target_device_id': targetDeviceId,
+              });
+            }
           }
         }
       } finally {

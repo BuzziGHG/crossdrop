@@ -336,15 +336,36 @@ class AppState extends ChangeNotifier {
       return;
     }
 
+    if (type == 'relay_sender_progress') {
+      final taskId = data['task_id'];
+      final sentBytes = data['sent_bytes'] as int? ?? 0;
+      final totalBytes = data['total_bytes'] as int? ?? 0;
+      final speed = (data['speed'] as num?)?.toDouble() ?? 0.0;
+      final transfer = transfers.where((t) => t.id == taskId).firstOrNull;
+      if (transfer != null && (transfer.status == TransferStatus.running || transfer.status == TransferStatus.pending)) {
+        transfer.status = TransferStatus.running;
+        if (totalBytes > 0 && transfer.totalBytes <= 0) {
+          transfer.totalBytes = totalBytes;
+        }
+        // Scale Phase 1: 0% to 50%
+        transfer.bytesTransferred = (sentBytes * 0.50).round();
+        transfer.speedBytesPerSecond = speed;
+        transfer.errorMessage = 'Phase 1/2: Sender überträgt an Server...';
+        _handleTransferProgress(transfer);
+      }
+      return;
+    }
+
     if (type == 'relay_receiver_progress') {
       final taskId = data['task_id'];
       final bytes = data['bytes'] as int? ?? 0;
       final speed = (data['speed'] as num?)?.toDouble() ?? 0.0;
       final transfer = transfers.where((t) => t.id == taskId).firstOrNull;
       if (transfer != null && transfer.status == TransferStatus.running) {
+        // Scale Phase 2: 50% to 100%
         transfer.bytesTransferred = (transfer.totalBytes * 0.50 + bytes * 0.50).round();
         transfer.speedBytesPerSecond = speed;
-        transfer.errorMessage = 'Phase 2: Empfänger lädt Datei herunter...';
+        transfer.errorMessage = 'Phase 2/2: Empfänger lädt Datei herunter...';
         _handleTransferProgress(transfer);
       }
       return;
@@ -479,8 +500,9 @@ class AppState extends ChangeNotifier {
 
       await for (final chunk in response) {
         sink.add(chunk);
-        receivedBytes += chunk.length;
-        item.bytesTransferred = receivedBytes;
+        // Scale Phase 2 (50% to 100%)
+        item.bytesTransferred = (item.totalBytes * 0.50 + receivedBytes * 0.50).round();
+        item.errorMessage = 'Phase 2/2: Empfänger lädt Datei herunter...';
 
         final now = DateTime.now();
         final ms = now.difference(lastTime).inMilliseconds;

@@ -98,8 +98,19 @@ class UpdateService {
       final totalBytes = streamedResponse.contentLength ?? updateInfo.fileSize;
       int receivedBytes = 0;
 
-      final tempDir = await getTemporaryDirectory();
-      final targetFile = File(p.join(tempDir.path, updateInfo.fileName));
+      String targetDir;
+      if (Platform.isAndroid) {
+        final dlDir = Directory('/storage/emulated/0/Download');
+        if (await dlDir.exists()) {
+          targetDir = dlDir.path;
+        } else {
+          final ext = await getExternalStorageDirectory();
+          targetDir = ext?.path ?? (await getTemporaryDirectory()).path;
+        }
+      } else {
+        targetDir = (await getTemporaryDirectory()).path;
+      }
+      final targetFile = File(p.join(targetDir, updateInfo.fileName));
       final sink = targetFile.openWrite();
 
       await for (final chunk in streamedResponse.stream) {
@@ -117,7 +128,10 @@ class UpdateService {
       onDownloaded(targetFile.path);
 
       // Trigger automatic installation
-      await installUpdate(targetFile.path);
+      final installed = await installUpdate(targetFile.path);
+      if (!installed && Platform.isAndroid) {
+        onError('Update gespeichert in "Downloads" (${targetFile.path}). Bitte dort antippen oder "Unbekannte Apps installieren" für CrossDrop erlauben.');
+      }
     } catch (e) {
       onError('Fehler beim Herunterladen des Updates: $e');
     }
@@ -125,11 +139,18 @@ class UpdateService {
 
   Future<bool> installUpdate(String filePath) async {
     try {
+      final file = File(filePath);
+      if (!await file.exists()) {
+        debugPrint('Update-Datei existiert nicht: $filePath');
+        return false;
+      }
+
       if (Platform.isAndroid) {
         final result = await OpenFilex.open(
           filePath,
           type: 'application/vnd.android.package-archive',
         );
+        debugPrint('OpenFilex APK install result: ${result.type} - ${result.message}');
         return result.type == ResultType.done;
       } else {
         final result = await OpenFilex.open(filePath);
