@@ -159,7 +159,6 @@ class TransferServer {
 
     final targetFile = File(finalPath);
     final sink = targetFile.openWrite(mode: FileMode.write);
-    request.response.bufferOutput = false;
 
     int receivedBytes = 0;
     int lastCheckBytes = 0;
