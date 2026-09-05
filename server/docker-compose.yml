@@ -1,4 +1,4 @@
-﻿version: '3.8'
+version: '3.8'
 
 services:
   crossdrop-server:
@@ -13,3 +13,4 @@ services:
       - ACCESS_TOKEN_EXPIRE_DAYS=30
     volumes:
       - ./data:/data
+      - ./app:/app/app
