@@ -72,8 +72,8 @@ class StorageService {
   Future<void> setDownloadPath(String path) =>
       _prefs.setString(AppConstants.keyDownloadPath, path);
 
-  // Auto-Accept Transfers from own account
-  bool get autoAccept => _prefs.getBool(AppConstants.keyAutoAccept) ?? false;
+  // Auto-Accept Transfers from own account & LAN (default true)
+  bool get autoAccept => _prefs.getBool(AppConstants.keyAutoAccept) ?? true;
   Future<void> setAutoAccept(bool val) =>
       _prefs.setBool(AppConstants.keyAutoAccept, val);
 }

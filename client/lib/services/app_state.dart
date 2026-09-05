@@ -242,6 +242,17 @@ class AppState extends ChangeNotifier {
   }
 
   Future<bool> _handleIncomingTransferRequest(TransferItem item) async {
+    // Eigene Geräte / gleicher Account / lokales LAN: IMMER automatisch annehmen!
+    final isOwnTransfer = !item.isCrossAccount &&
+        (item.senderEmail == null || item.senderEmail == currentUser?.email);
+
+    if (isOwnTransfer || (!item.isCrossAccount && storage.autoAccept)) {
+      transfers.insert(0, item);
+      notifyListeners();
+      return true;
+    }
+
+    // Nur bei echten Cross-Account-Übertragungen von externen E-Mails fragen:
     pendingApprovalItem = item;
     _approvalCompleter = Completer<bool>();
     notifyListeners();

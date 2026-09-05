@@ -37,18 +37,44 @@ EOF
 
 # 1. Patch app/build.gradle.kts if present
 if [ -f app/build.gradle.kts ]; then
-  echo "Patching app/build.gradle.kts with permanent release signing and compileSdk 36..."
+  echo "Patching app/build.gradle.kts with permanent release signing, compileSdk 36, and desugaring..."
   sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/g' app/build.gradle.kts
   sed -i 's/compileSdkVersion(flutter.compileSdkVersion)/compileSdkVersion(36)/g' app/build.gradle.kts
   sed -i 's/signingConfig = signingConfigs.getByName("debug")/signingConfig = signingConfigs.create("release") { storeFile = file("crossdrop.keystore"); storePassword = "crossdrop123"; keyAlias = "crossdrop"; keyPassword = "crossdrop123" }/g' app/build.gradle.kts || true
+  
+  if ! grep -q "isCoreLibraryDesugaringEnabled" app/build.gradle.kts; then
+    sed -i '/compileOptions[[:space:]]*{/a \        isCoreLibraryDesugaringEnabled = true' app/build.gradle.kts
+  fi
+
+  if ! grep -q "desugar_jdk_libs" app/build.gradle.kts; then
+    cat << 'EOF' >> app/build.gradle.kts
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+}
+EOF
+  fi
 fi
 
 # 2. Patch app/build.gradle (Groovy) if present
 if [ -f app/build.gradle ]; then
-  echo "Patching app/build.gradle with permanent release signing and compileSdk 36..."
+  echo "Patching app/build.gradle with permanent release signing, compileSdk 36, and desugaring..."
   sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/g' app/build.gradle
   sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/g' app/build.gradle
   sed -i 's/signingConfig = signingConfigs.debug/signingConfig = signingConfigs.create("release") { storeFile = file("crossdrop.keystore"); storePassword = "crossdrop123"; keyAlias = "crossdrop"; keyPassword = "crossdrop123" }/g' app/build.gradle || true
+
+  if ! grep -q "coreLibraryDesugaringEnabled" app/build.gradle; then
+    sed -i '/compileOptions[[:space:]]*{/a \        coreLibraryDesugaringEnabled true' app/build.gradle
+  fi
+
+  if ! grep -q "desugar_jdk_libs" app/build.gradle; then
+    cat << 'EOF' >> app/build.gradle
+
+dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
+}
+EOF
+  fi
 fi
 
 echo "=== Android build files patched successfully ==="
