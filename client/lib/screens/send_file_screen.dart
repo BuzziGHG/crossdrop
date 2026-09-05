@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
@@ -223,7 +223,7 @@ class _SendFileScreenState extends State<SendFileScreen> {
               value: ConnectionMode.lan,
               groupValue: _connectionMode,
               title: const Text('Lokales Netzwerk (LAN / WLAN)'),
-              subtitle: const Text('Maximale Geschwindigkeit im selben Heimnetz / Firmennetz'),
+              subtitle: const Text('Maximale Geschwindigkeit P2P (automatischer Relay-Fallback bei Firewall)'),
               secondary: const Icon(Icons.wifi),
               onChanged: (val) {
                 if (val != null) setState(() => _connectionMode = val);
@@ -232,8 +232,8 @@ class _SendFileScreenState extends State<SendFileScreen> {
             RadioListTile<ConnectionMode>(
               value: ConnectionMode.vpn,
               groupValue: _connectionMode,
-              title: const Text('VPN-Verbindung (WireGuard / Tailscale)'),
-              subtitle: const Text('Sichere verschlüsselte Direktverbindung von unterwegs'),
+              title: const Text('VPN / Server-Relay (Unterwegs & Remote)'),
+              subtitle: const Text('Sichere Übertragung über Server-Relay von unterwegs oder mobilem Netz'),
               secondary: const Icon(Icons.vpn_lock),
               onChanged: (val) {
                 if (val != null) setState(() => _connectionMode = val);

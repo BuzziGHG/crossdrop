@@ -1,16 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:uuid/uuid.dart';
 import '../models/transfer_item.dart';
+import 'vpn_tunnel_service.dart';
 
 typedef TransferClientProgressCallback = void Function(TransferItem item);
 
 class TransferClient {
-  // High-performance chunk buffer: 512 KB (maximizes LAN & VPN throughput)
+  // High-performance chunk buffer: 512 KB (maximizes LAN & Relay throughput)
   static const int _chunkSize = 512 * 1024;
 
   static Future<void> sendFile({
@@ -20,11 +20,18 @@ class TransferClient {
     required String targetDeviceName,
     required String senderDeviceName,
     required String connectionMode,
+    String? targetDeviceId,
+    String? senderDeviceId,
+    String? serverUrl,
+    String? token,
+    VpnTunnelService? vpnTunnel,
     required TransferClientProgressCallback onProgress,
   }) async {
     final taskId = const Uuid().v4();
     final filename = p.basename(file.path);
     final fileSize = await file.length();
+
+    final isVpnMode = connectionMode == 'VPN' || targetIp.startsWith('10.42.0.');
 
     final item = TransferItem(
       id: taskId,
@@ -33,52 +40,137 @@ class TransferClient {
       totalBytes: fileSize,
       direction: TransferDirection.send,
       peerDeviceName: targetDeviceName,
-      peerIp: targetIp,
-      peerPort: targetPort,
-      mode: connectionMode,
+      peerDeviceId: targetDeviceId,
+      peerIp: isVpnMode ? 'Server-Relay' : targetIp,
+      peerPort: isVpnMode ? 2603 : targetPort,
+      mode: isVpnMode ? 'Relay' : connectionMode,
       status: TransferStatus.connecting,
     );
 
     onProgress(item);
 
-    try {
-      // 1. Handshake Request to Target Device
-      final handshakeUri = Uri.parse('http://$targetIp:$targetPort/api/transfer/request');
-      final handshakeResponse = await http
-          .post(
-            handshakeUri,
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'task_id': taskId,
-              'filename': filename,
-              'size': fileSize,
-              'sender_name': senderDeviceName,
-              'mode': connectionMode,
-            }),
-          )
-          .timeout(const Duration(seconds: 60));
-
-      if (handshakeResponse.statusCode != 200) {
-        item.status = TransferStatus.rejected;
-        item.errorMessage = 'Anfrage abgelehnt oder Ziel nicht erreichbar';
-        onProgress(item);
+    // If VPN or Remote selected, use Server Relay directly
+    if (isVpnMode || serverUrl == null) {
+      if (serverUrl != null && targetDeviceId != null) {
+        await _sendViaRelay(
+          file: file,
+          taskId: taskId,
+          item: item,
+          targetDeviceName: targetDeviceName,
+          senderDeviceName: senderDeviceName,
+          targetDeviceId: targetDeviceId,
+          senderDeviceId: senderDeviceId ?? '',
+          serverUrl: serverUrl,
+          token: token ?? '',
+          vpnTunnel: vpnTunnel,
+          onProgress: onProgress,
+        );
         return;
       }
+    }
 
-      // 2. High-Speed Direct Stream Upload using Native HttpClient
-      item.status = TransferStatus.running;
+    // Try Direct LAN First
+    bool lanConnected = false;
+    try {
+      final pingUri = Uri.parse('http://$targetIp:$targetPort/api/ping');
+      final pingRes = await http.get(pingUri).timeout(const Duration(milliseconds: 2500));
+      if (pingRes.statusCode == 200) {
+        lanConnected = true;
+      }
+    } catch (_) {
+      lanConnected = false;
+    }
+
+    if (lanConnected) {
+      try {
+        // 1. Direct LAN Handshake
+        final handshakeUri = Uri.parse('http://$targetIp:$targetPort/api/transfer/request');
+        final handshakeResponse = await http
+            .post(
+              handshakeUri,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'task_id': taskId,
+                'filename': filename,
+                'size': fileSize,
+                'sender_name': senderDeviceName,
+                'mode': connectionMode,
+              }),
+            )
+            .timeout(const Duration(seconds: 45));
+
+        if (handshakeResponse.statusCode == 200) {
+          // Direct P2P stream upload
+          await _streamDirectToPeer(
+            file: file,
+            taskId: taskId,
+            targetIp: targetIp,
+            targetPort: targetPort,
+            fileSize: fileSize,
+            item: item,
+            onProgress: onProgress,
+          );
+          return;
+        } else {
+          item.status = TransferStatus.rejected;
+          item.errorMessage = 'Transfer vom Empfänger abgelehnt.';
+          onProgress(item);
+          return;
+        }
+      } catch (e) {
+        // Direct LAN handshake failed, fallback to Relay below
+      }
+    }
+
+    // Fallback to Server Relay if direct LAN is blocked by firewall/network isolation
+    if (serverUrl != null && targetDeviceId != null) {
+      item.errorMessage = 'LAN nicht erreichbar – Schalte auf Server-Relay um...';
+      item.mode = 'Relay';
       onProgress(item);
 
-      final uploadUri = Uri.parse('http://$targetIp:$targetPort/api/transfer/upload/$taskId');
+      await _sendViaRelay(
+        file: file,
+        taskId: taskId,
+        item: item,
+        targetDeviceName: targetDeviceName,
+        senderDeviceName: senderDeviceName,
+        targetDeviceId: targetDeviceId,
+        senderDeviceId: senderDeviceId ?? '',
+        serverUrl: serverUrl,
+        token: token ?? '',
+        vpnTunnel: vpnTunnel,
+        onProgress: onProgress,
+      );
+    } else {
+      item.status = TransferStatus.failed;
+      item.errorMessage = 'Verbindungsfehler: Zielgerät im LAN nicht erreichbar.';
+      onProgress(item);
+    }
+  }
 
-      final client = HttpClient();
-      client.idleTimeout = const Duration(seconds: 120);
-      client.connectionTimeout = const Duration(seconds: 30);
+  static Future<void> _streamDirectToPeer({
+    required File file,
+    required String taskId,
+    required String targetIp,
+    required int targetPort,
+    required int fileSize,
+    required TransferItem item,
+    required TransferClientProgressCallback onProgress,
+  }) async {
+    item.status = TransferStatus.running;
+    onProgress(item);
 
+    final uploadUri = Uri.parse('http://$targetIp:$targetPort/api/transfer/upload/$taskId');
+
+    final client = HttpClient();
+    client.idleTimeout = const Duration(seconds: 120);
+    client.connectionTimeout = const Duration(seconds: 30);
+
+    try {
       final request = await client.postUrl(uploadUri);
       request.headers.set(HttpHeaders.contentTypeHeader, 'application/octet-stream');
       request.contentLength = fileSize;
-      request.bufferOutput = false; // direct pipeline streaming to socket without intermediate buffering
+      request.bufferOutput = false;
 
       int sentBytes = 0;
       int lastCheckBytes = 0;
@@ -100,7 +192,6 @@ class TransferClient {
           if (ms >= 300) {
             final bytesDiff = sentBytes - lastCheckBytes;
             final currentSpeed = (bytesDiff / (ms / 1000.0));
-            // Rolling average for smooth speed display
             item.speedBytesPerSecond = item.speedBytesPerSecond == 0
                 ? currentSpeed
                 : (item.speedBytesPerSecond * 0.4 + currentSpeed * 0.6);
@@ -127,15 +218,127 @@ class TransferClient {
         item.errorMessage = 'Fehler beim Übertragen (HTTP ${response.statusCode}): $responseBody';
         onProgress(item);
       }
-    } on TimeoutException {
-      item.status = TransferStatus.failed;
-      item.errorMessage =
-          'Verbindungs-Timeout: Zielgerät nicht erreichbar oder Transfer nicht angenommen (60 s).\n'
-          'Bitte prüfe: Sind beide Geräte im selben WLAN? Ist CrossDrop auf dem Zielgerät geöffnet?';
-      onProgress(item);
     } catch (e) {
+      client.close();
       item.status = TransferStatus.failed;
-      item.errorMessage = 'Verbindungsfehler: $e';
+      item.errorMessage = 'Fehler bei Direktübertragung: $e';
+      onProgress(item);
+    }
+  }
+
+  static Future<void> _sendViaRelay({
+    required File file,
+    required String taskId,
+    required TransferItem item,
+    required String targetDeviceName,
+    required String senderDeviceName,
+    required String targetDeviceId,
+    required String senderDeviceId,
+    required String serverUrl,
+    required String token,
+    VpnTunnelService? vpnTunnel,
+    required TransferClientProgressCallback onProgress,
+  }) async {
+    final filename = p.basename(file.path);
+    final fileSize = await file.length();
+
+    item.status = TransferStatus.running;
+    onProgress(item);
+
+    // 1. Notify receiver over WebSocket tunnel
+    if (vpnTunnel != null && vpnTunnel.isConnected) {
+      vpnTunnel.sendThroughTunnel({
+        'type': 'transfer_request',
+        'task_id': taskId,
+        'filename': filename,
+        'size': fileSize,
+        'sender_name': senderDeviceName,
+        'sender_device_id': senderDeviceId,
+        'target_device_id': targetDeviceId,
+        'mode': 'Relay',
+      });
+    }
+
+    // 2. Stream upload to server relay
+    final uploadUri = Uri.parse(
+      '$serverUrl/api/transfer/relay/upload/$taskId'
+      '?filename=${Uri.encodeComponent(filename)}'
+      '&size=$fileSize'
+      '&sender_name=${Uri.encodeComponent(senderDeviceName)}',
+    );
+
+    final client = HttpClient();
+    client.idleTimeout = const Duration(seconds: 120);
+    client.connectionTimeout = const Duration(seconds: 30);
+
+    try {
+      final request = await client.postUrl(uploadUri);
+      request.headers.set(HttpHeaders.contentTypeHeader, 'application/octet-stream');
+      if (token.isNotEmpty) {
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+      }
+      request.contentLength = fileSize;
+      request.bufferOutput = false;
+
+      int sentBytes = 0;
+      int lastCheckBytes = 0;
+      DateTime lastTime = DateTime.now();
+
+      final raf = await file.open(mode: FileMode.read);
+      try {
+        while (sentBytes < fileSize) {
+          final toRead = (fileSize - sentBytes) > _chunkSize ? _chunkSize : (fileSize - sentBytes);
+          final chunk = await raf.read(toRead);
+          if (chunk.isEmpty) break;
+
+          request.add(chunk);
+          sentBytes += chunk.length;
+          item.bytesTransferred = sentBytes;
+
+          final now = DateTime.now();
+          final ms = now.difference(lastTime).inMilliseconds;
+          if (ms >= 300) {
+            final bytesDiff = sentBytes - lastCheckBytes;
+            final currentSpeed = (bytesDiff / (ms / 1000.0));
+            item.speedBytesPerSecond = item.speedBytesPerSecond == 0
+                ? currentSpeed
+                : (item.speedBytesPerSecond * 0.4 + currentSpeed * 0.6);
+            lastCheckBytes = sentBytes;
+            lastTime = now;
+            onProgress(item);
+          }
+        }
+      } finally {
+        await raf.close();
+      }
+
+      final response = await request.close();
+      final responseBody = await response.transform(utf8.decoder).join();
+      client.close();
+
+      if (response.statusCode == 200) {
+        item.status = TransferStatus.completed;
+        item.bytesTransferred = fileSize;
+        item.speedBytesPerSecond = 0;
+        onProgress(item);
+
+        // Notify target device that upload is complete on server relay
+        if (vpnTunnel != null && vpnTunnel.isConnected) {
+          vpnTunnel.sendThroughTunnel({
+            'type': 'relay_ready',
+            'task_id': taskId,
+            'target_device_id': targetDeviceId,
+          });
+        }
+      } else {
+        item.status = TransferStatus.failed;
+        item.errorMessage = 'Relay-Upload fehlgeschlagen (HTTP ${response.statusCode}): $responseBody';
+        onProgress(item);
+      }
+    } catch (e) {
+      client.close();
+      item.status = TransferStatus.failed;
+      item.errorMessage = 'Relay-Verbindungsfehler: $e';
       onProgress(item);
     }
   }

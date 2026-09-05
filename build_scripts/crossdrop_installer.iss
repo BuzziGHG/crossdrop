@@ -1,7 +1,7 @@
 ; Inno Setup Script fuer CrossDrop Windows Installer (.exe)
 [Setup]
 AppName=CrossDrop
-AppVersion=1.0.2
+AppVersion=1.0.3
 DefaultDirName={autopf}\CrossDrop
 DefaultGroupName=CrossDrop
 OutputDir=.
@@ -22,4 +22,8 @@ Name: "{group}\CrossDrop deinstallieren"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\CrossDrop"; Filename: "{app}\crossdrop.exe"
 
 [Run]
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""CrossDrop"" dir=in action=allow program=""{app}\crossdrop.exe"" enable=yes"; Flags: runhidden
 Filename: "{app}\crossdrop.exe"; Description: "{cm:LaunchProgram,CrossDrop}"; Flags: nowait postinstall skipifsilent
+
+[UninstallRun]
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""CrossDrop"""; Flags: runhidden

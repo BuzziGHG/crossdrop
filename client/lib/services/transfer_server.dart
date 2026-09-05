@@ -147,8 +147,18 @@ class TransferServer {
 
     String downloadDir = _storage.downloadPath ?? '';
     if (downloadDir.isEmpty) {
-      final dir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
-      downloadDir = dir.path;
+      if (Platform.isAndroid) {
+        final androidDownloadDir = Directory('/storage/emulated/0/Download');
+        if (await androidDownloadDir.exists()) {
+          downloadDir = androidDownloadDir.path;
+        } else {
+          final extDir = await getExternalStorageDirectory();
+          downloadDir = extDir?.path ?? (await getApplicationDocumentsDirectory()).path;
+        }
+      } else {
+        final dir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+        downloadDir = dir.path;
+      }
     }
 
     String finalPath = p.join(downloadDir, item.filename);

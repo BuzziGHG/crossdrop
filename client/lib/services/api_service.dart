@@ -1,4 +1,4 @@
-﻿import 'dart:convert';
+import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/device.dart';
@@ -162,6 +162,34 @@ class ApiService {
     if (response.statusCode != 200) {
       throw Exception('Gerät konnte nicht entfernt werden.');
     }
+  }
+
+  // Get Profile / Validate Session
+  Future<AppUser> getMe() async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/api/auth/me'),
+      headers: _headers(),
+    ).timeout(const Duration(seconds: 8));
+
+    if (response.statusCode == 401) {
+      throw AuthExpiredException();
+    }
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return AppUser.fromJson(data, _storage.token!);
+    } else {
+      throw Exception('Profil konnte nicht geladen werden.');
+    }
+  }
+
+  // Delete Relay File after download
+  Future<void> deleteRelayFile(String taskId) async {
+    try {
+      await http.delete(
+        Uri.parse('$_baseUrl/api/transfer/relay/$taskId'),
+        headers: _headers(),
+      ).timeout(const Duration(seconds: 5));
+    } catch (_) {}
   }
 
   String _parseError(String body) {

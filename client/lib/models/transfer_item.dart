@@ -1,4 +1,4 @@
-﻿enum TransferStatus { pending, connecting, running, completed, failed, rejected }
+enum TransferStatus { pending, connecting, running, completed, failed, rejected }
 enum TransferDirection { send, receive }
 
 class TransferItem {
@@ -11,10 +11,11 @@ class TransferItem {
   TransferStatus status;
   final TransferDirection direction;
   final String peerDeviceName;
+  final String? peerDeviceId;
   final String peerIp;
   final int peerPort;
   final String? checksumSha256;
-  final String mode; // 'LAN' or 'VPN'
+  final String mode; // 'LAN' or 'VPN' or 'Relay'
   String? errorMessage;
   final DateTime createdAt;
 
@@ -28,6 +29,7 @@ class TransferItem {
     this.status = TransferStatus.pending,
     required this.direction,
     required this.peerDeviceName,
+    this.peerDeviceId,
     required this.peerIp,
     required this.peerPort,
     this.checksumSha256,

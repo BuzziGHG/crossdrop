@@ -1,4 +1,4 @@
-﻿import json
+import json
 from datetime import datetime, timedelta
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,6 +14,7 @@ ONLINE_TIMEOUT_SECONDS = 45
 
 @router.get("", response_model=List[DeviceResponse])
 def get_user_devices(
+    active_only: bool = True,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -22,8 +23,13 @@ def get_user_devices(
     result = []
     
     for dev in devices:
-        # Determine if online based on last_seen
+        # Determine if online based on last_seen within 45s
         is_active = (now - dev.last_seen) < timedelta(seconds=ONLINE_TIMEOUT_SECONDS)
+        dev.is_online = is_active
+
+        # If active_only is set, completely omit inactive devices from the list
+        if active_only and not is_active:
+            continue
         
         try:
             local_list = json.loads(dev.local_ips) if dev.local_ips else []
@@ -45,6 +51,7 @@ def get_user_devices(
             is_online=is_active,
             last_seen=dev.last_seen
         ))
+    db.commit()
     return result
 
 @router.post("/register", response_model=DeviceResponse)

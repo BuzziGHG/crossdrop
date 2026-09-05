@@ -1,6 +1,9 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import '../models/user.dart';
 import '../models/device.dart';
 import '../models/transfer_item.dart';
@@ -39,18 +42,27 @@ class AppState extends ChangeNotifier {
     api = ApiService(storage);
     server = TransferServer(storage);
     vpnTunnel = VpnTunnelService(storage);
+
+    // Persistent login: Initialize user synchronously so the UI stays logged in
+    if (storage.token != null && storage.token!.isNotEmpty) {
+      currentUser = AppUser(
+        id: storage.userId ?? 0,
+        email: storage.email ?? '',
+        username: storage.username ?? 'Benutzer',
+        token: storage.token!,
+      );
+    }
     _init();
   }
 
   Future<void> _init() async {
-    if (storage.token != null && storage.email != null && storage.userId != null) {
-      currentUser = AppUser(
-        id: storage.userId!,
-        email: storage.email!,
-        username: storage.username ?? 'Benutzer',
-        token: storage.token!,
-      );
-      notifyListeners();
+    if (currentUser != null) {
+      try {
+        final me = await api.getMe();
+        currentUser = me;
+        await storage.saveUser(id: me.id, email: me.email, username: me.username);
+        notifyListeners();
+      } catch (_) {}
       await onUserLoggedIn();
     }
   }
@@ -132,6 +144,7 @@ class AppState extends ChangeNotifier {
         }
         notifyListeners();
       },
+      onDataReceived: _handleTunnelData,
     );
 
     // Register device
@@ -145,9 +158,6 @@ class AppState extends ChangeNotifier {
         transferPort: server.port,
       );
       isServerReachable = true;
-    } on AuthExpiredException {
-      await _handleServerReset();
-      return;
     } catch (_) {
       isServerReachable = false;
     }
@@ -180,11 +190,10 @@ class AppState extends ChangeNotifier {
     if (!isAuthenticated) return;
     try {
       final list = await api.getDevices();
-      devices = list.where((d) => d.id != storage.deviceId).toList();
+      // Only keep active/online devices belonging to other machines
+      devices = list.where((d) => d.id != storage.deviceId && d.isOnline).toList();
       isServerReachable = true;
       notifyListeners();
-    } on AuthExpiredException {
-      await _handleServerReset();
     } catch (_) {
       isServerReachable = false;
       notifyListeners();
@@ -202,8 +211,6 @@ class AppState extends ChangeNotifier {
         transferPort: server.port,
       );
       isServerReachable = true;
-    } on AuthExpiredException {
-      await _handleServerReset();
     } catch (_) {
       isServerReachable = false;
     }
@@ -241,18 +248,159 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> _handleTunnelData(Map<String, dynamic> data) async {
+    final type = data['type'];
+    if (type == 'transfer_request') {
+      final taskId = data['task_id'] ?? '';
+      final filename = data['filename'] ?? 'Datei';
+      final fileSize = data['size'] ?? 0;
+      final senderName = data['sender_name'] ?? 'Gerät';
+      final senderId = data['sender_device_id'] ?? '';
+      final mode = data['mode'] ?? 'Relay';
+
+      final item = TransferItem(
+        id: taskId,
+        filename: filename,
+        totalBytes: fileSize,
+        direction: TransferDirection.receive,
+        peerDeviceName: senderName,
+        peerDeviceId: senderId,
+        peerIp: 'Server-Relay',
+        peerPort: 2603,
+        mode: mode,
+        status: TransferStatus.pending,
+      );
+
+      final accepted = await _handleIncomingTransferRequest(item);
+      if (accepted) {
+        _startRelayDownload(item, taskId);
+      }
+    }
+  }
+
+  Future<void> _startRelayDownload(TransferItem item, String taskId) async {
+    item.status = TransferStatus.connecting;
+    notifyListeners();
+
+    // 1. Wait until the file is ready on the server relay
+    bool ready = false;
+    for (int i = 0; i < 90; i++) {
+      try {
+        final infoRes = await http.get(
+          Uri.parse('${storage.serverUrl}/api/transfer/relay/info/$taskId'),
+        ).timeout(const Duration(seconds: 4));
+        if (infoRes.statusCode == 200) {
+          ready = true;
+          break;
+        }
+      } catch (_) {}
+      await Future.delayed(const Duration(seconds: 1));
+    }
+
+    if (!ready) {
+      item.status = TransferStatus.failed;
+      item.errorMessage = 'Zeitüberschreitung: Datei wurde vom Sender nicht bereitgestellt.';
+      notifyListeners();
+      return;
+    }
+
+    // 2. Prepare destination path
+    String downloadDir = storage.downloadPath ?? '';
+    if (downloadDir.isEmpty) {
+      if (Platform.isAndroid) {
+        final androidDownloadDir = Directory('/storage/emulated/0/Download');
+        if (await androidDownloadDir.exists()) {
+          downloadDir = androidDownloadDir.path;
+        } else {
+          final extDir = await getExternalStorageDirectory();
+          downloadDir = extDir?.path ?? (await getApplicationDocumentsDirectory()).path;
+        }
+      } else {
+        final dir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+        downloadDir = dir.path;
+      }
+    }
+
+    String finalPath = p.join(downloadDir, item.filename);
+    int counter = 1;
+    final extension = p.extension(item.filename);
+    final basenameWithoutExt = p.basenameWithoutExtension(item.filename);
+    while (File(finalPath).existsSync()) {
+      finalPath = p.join(downloadDir, '$basenameWithoutExt($counter)$extension');
+      counter++;
+    }
+
+    final targetFile = File(finalPath);
+    final sink = targetFile.openWrite(mode: FileMode.write);
+
+    // 3. Stream download using HttpClient
+    final client = HttpClient();
+    try {
+      item.status = TransferStatus.running;
+      notifyListeners();
+
+      final downloadUri = Uri.parse('${storage.serverUrl}/api/transfer/relay/download/$taskId');
+      final request = await client.getUrl(downloadUri);
+      if (storage.token != null) {
+        request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${storage.token}');
+      }
+      final response = await request.close();
+
+      if (response.statusCode != 200) {
+        throw Exception('Server-Download fehlgeschlagen (HTTP ${response.statusCode})');
+      }
+
+      int receivedBytes = 0;
+      int lastCheckBytes = 0;
+      DateTime lastTime = DateTime.now();
+
+      await for (final chunk in response) {
+        sink.add(chunk);
+        receivedBytes += chunk.length;
+        item.bytesTransferred = receivedBytes;
+
+        final now = DateTime.now();
+        final ms = now.difference(lastTime).inMilliseconds;
+        if (ms >= 300) {
+          final bytesDiff = receivedBytes - lastCheckBytes;
+          final currentSpeed = (bytesDiff / (ms / 1000.0));
+          item.speedBytesPerSecond = item.speedBytesPerSecond == 0
+              ? currentSpeed
+              : (item.speedBytesPerSecond * 0.4 + currentSpeed * 0.6);
+          lastCheckBytes = receivedBytes;
+          lastTime = now;
+          notifyListeners();
+        }
+      }
+
+      await sink.flush();
+      await sink.close();
+
+      item.status = TransferStatus.completed;
+      item.bytesTransferred = item.totalBytes > 0 ? item.totalBytes : receivedBytes;
+      item.speedBytesPerSecond = 0;
+      notifyListeners();
+
+      // Clean up temp file on server
+      await api.deleteRelayFile(taskId);
+    } catch (e) {
+      await sink.close();
+      item.status = TransferStatus.failed;
+      item.errorMessage = 'Download-Fehler: $e';
+      notifyListeners();
+    } finally {
+      client.close();
+    }
+  }
+
   Future<void> startSendingFile({
     required File file,
     required DeviceModel targetDevice,
     required ConnectionMode mode,
   }) async {
     final targetIp = mode == ConnectionMode.vpn
-        ? (targetDevice.vpnIps.isNotEmpty ? targetDevice.vpnIps.first : null)
-        : (targetDevice.localIps.isNotEmpty ? targetDevice.localIps.first : null);
-
-    if (targetIp == null) {
-      throw Exception('Keine gültige ${mode == ConnectionMode.vpn ? "VPN" : "LAN"}-IP für ${targetDevice.name} gefunden.');
-    }
+        ? (targetDevice.vpnIps.isNotEmpty ? targetDevice.vpnIps.first : '10.42.0.1')
+        : (targetDevice.localIps.isNotEmpty ? targetDevice.localIps.first : (targetDevice.vpnIps.isNotEmpty ? targetDevice.vpnIps.first : '10.42.0.1'));
 
     final modeString = mode == ConnectionMode.vpn ? 'VPN' : 'LAN';
 
@@ -263,6 +411,11 @@ class AppState extends ChangeNotifier {
       targetDeviceName: targetDevice.name,
       senderDeviceName: deviceName,
       connectionMode: modeString,
+      targetDeviceId: targetDevice.id,
+      senderDeviceId: storage.deviceId,
+      serverUrl: storage.serverUrl,
+      token: storage.token,
+      vpnTunnel: vpnTunnel,
       onProgress: (item) {
         final idx = transfers.indexWhere((t) => t.id == item.id);
         if (idx != -1) {
