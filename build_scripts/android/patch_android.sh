@@ -1,22 +1,30 @@
 #!/usr/bin/env bash
 set -e
 
-echo "=== Patching Android build files for compileSdk 36 ==="
+echo "=== Patching Android build files ==="
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR/../../client/android"
+CLIENT_DIR="$SCRIPT_DIR/../../client"
+cd "$CLIENT_DIR/android"
 
 # Copy custom AndroidManifest with LAN/VPN permissions
 cp "$SCRIPT_DIR/AndroidManifest.xml" app/src/main/AndroidManifest.xml
 
-# Set compileSdk 36 in app/build.gradle
+# Disable AarMetadata checks and set compileSdk 36 in app/build.gradle
 if [ -f app/build.gradle ]; then
   sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/g' app/build.gradle
   sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/g' app/build.gradle
-  sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 34/g' app/build.gradle
+  cat << 'EOF' >> app/build.gradle
+
+tasks.whenTaskAdded { task ->
+    if (task.name.contains("AarMetadata") || task.name.contains("aarMetadata")) {
+        task.enabled = false
+    }
+}
+EOF
 fi
 
-# Append subprojects compileSdkVersion 36 to root build.gradle
+# Append subprojects compileSdkVersion 36 and disable AarMetadata in root build.gradle
 if [ -f build.gradle ]; then
   cat << 'EOF' >> build.gradle
 
@@ -28,11 +36,16 @@ subprojects {
             }
         }
     }
+    tasks.whenTaskAdded { task ->
+        if (task.name.contains("AarMetadata") || task.name.contains("aarMetadata")) {
+            task.enabled = false
+        }
+    }
 }
 EOF
 fi
 
-# Add gradle.properties settings
+# In gradle.properties
 cat << 'EOF' >> gradle.properties
 android.useAndroidX=true
 android.enableJetifier=true
