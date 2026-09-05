@@ -2,7 +2,7 @@ from datetime import datetime
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import init_db
-from app.routers import auth_router, device_router, transfer_router, vpn_router, admin_router
+from app.routers import auth_router, device_router, transfer_router, vpn_router, admin_router, update_router
 
 app = FastAPI(
     title="CrossDrop Self-Hosted API",
@@ -30,6 +30,7 @@ app.include_router(device_router.router)
 app.include_router(transfer_router.router)
 app.include_router(vpn_router.router)
 app.include_router(admin_router.router)
+app.include_router(update_router.router)
 
 @app.get("/")
 def root():

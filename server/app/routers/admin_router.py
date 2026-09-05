@@ -267,6 +267,50 @@ def admin_dashboard():
           <a href="https://github.com/BuzziGHG/crossdrop/releases/download/v1.0.0/crossdrop-release.apk" class="btn" target="_blank">Download .apk</a>
         </div>
       </div>
+    <!-- In-App Auto-Update Server Section -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">🔄 In-App Auto-Update Server</div>
+        <span class="badge badge-online">🟢 Auto-Update Dienst Aktiv</span>
+      </div>
+      <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
+        Verwalten Sie App-Aktualisierungen direkt auf Ihrem Server. Verbundene Apps (Android, Windows, Linux) prüfen automatisch diese Schnittstelle und aktualisieren sich selbstständig, ohne dass Nutzer manuell APKs von GitHub herunterladen müssen.
+      </p>
+
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); border-radius: 12px; padding: 18px; margin-bottom: 20px;">
+        <h4 style="margin-bottom: 12px; font-size: 15px;">Aktuelle Server-Update-Versionen</h4>
+        <div style="display: flex; gap: 24px; flex-wrap: wrap;" id="update-versions-display">
+          <div><span style="color: var(--text-muted); font-size: 12px;">ANDROID APK:</span> <strong id="up-ver-android">v1.0.0</strong></div>
+          <div><span style="color: var(--text-muted); font-size: 12px;">WINDOWS:</span> <strong id="up-ver-windows">v1.0.0</strong></div>
+          <div><span style="color: var(--text-muted); font-size: 12px;">LINUX .DEB:</span> <strong id="up-ver-linux">v1.0.0</strong></div>
+        </div>
+      </div>
+
+      <!-- Upload Form for new APK / binary directly from browser -->
+      <form id="upload-update-form" onsubmit="handleUpdateUpload(event)" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; align-items: end;">
+        <div>
+          <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">Plattform</label>
+          <select id="up-platform" style="width: 100%; padding: 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--card-border); color: #fff;">
+            <option value="android">📱 Android (.apk)</option>
+            <option value="windows">🖥️ Windows (.zip)</option>
+            <option value="linux">🐧 Linux (.deb)</option>
+          </select>
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">Neue Versionsnummer (z. B. 1.0.1)</label>
+          <input type="text" id="up-version" placeholder="1.0.1" required style="width: 100%; padding: 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--card-border); color: #fff;">
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">Update-Datei auswählen</label>
+          <input type="file" id="up-file" required style="width: 100%; padding: 7px; border-radius: 8px; background: var(--bg); border: 1px solid var(--card-border); color: #fff;">
+        </div>
+        <div>
+          <button type="submit" class="btn" style="width: 100%; padding: 10px; justify-content: center;" id="btn-upload-update">
+            🚀 Update auf Server bereitstellen
+          </button>
+        </div>
+      </form>
+      <div id="upload-msg" style="margin-top: 12px; font-size: 13px; display: none;"></div>
     </div>
 
     <footer>
@@ -331,8 +375,78 @@ def admin_dashboard():
             </tr>
           `).join('');
         }
+        loadUpdateStatus();
       } catch (err) {
         console.error("Fehler beim Laden der Admin-Statistiken:", err);
+      }
+    }
+
+    async function loadUpdateStatus() {
+      try {
+        const res = await fetch('/api/updates/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.platforms) {
+          if (data.platforms.android) {
+            document.getElementById('up-ver-android').innerText = 'v' + data.platforms.android.version + (data.platforms.android.has_local_file ? ' (Lokal bereit)' : ' (GitHub Fallback)');
+          }
+          if (data.platforms.windows) {
+            document.getElementById('up-ver-windows').innerText = 'v' + data.platforms.windows.version + (data.platforms.windows.has_local_file ? ' (Lokal bereit)' : ' (GitHub Fallback)');
+          }
+          if (data.platforms.linux) {
+            document.getElementById('up-ver-linux').innerText = 'v' + data.platforms.linux.version + (data.platforms.linux.has_local_file ? ' (Lokal bereit)' : ' (GitHub Fallback)');
+          }
+        }
+      } catch (e) {
+        console.error("Error loading update status", e);
+      }
+    }
+
+    async function handleUpdateUpload(e) {
+      e.preventDefault();
+      const platform = document.getElementById('up-platform').value;
+      const version = document.getElementById('up-version').value.trim();
+      const fileInput = document.getElementById('up-file');
+      const msg = document.getElementById('upload-msg');
+      const btn = document.getElementById('btn-upload-update');
+
+      if (!fileInput.files || fileInput.files.length === 0) {
+        alert("Bitte eine Datei auswählen!");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('platform', platform);
+      formData.append('version', version);
+      formData.append('file', fileInput.files[0]);
+
+      btn.disabled = true;
+      btn.innerText = "⏳ Lade Datei hoch...";
+      msg.style.display = 'block';
+      msg.style.color = '#38bdf8';
+      msg.innerText = "Upload läuft... Bitte warten.";
+
+      try {
+        const res = await fetch('/api/updates/upload', {
+          method: 'POST',
+          body: formData
+        });
+        const result = await res.json();
+        if (res.ok) {
+          msg.style.color = '#34d399';
+          msg.innerText = "✅ " + result.message + " Apps erhalten dieses Update nun automatisch!";
+          fileInput.value = '';
+          loadUpdateStatus();
+        } else {
+          msg.style.color = '#ef4444';
+          msg.innerText = "❌ Fehler: " + (result.detail || "Upload fehlgeschlagen");
+        }
+      } catch (err) {
+        msg.style.color = '#ef4444';
+        msg.innerText = "❌ Netzwerkfehler beim Upload: " + err.message;
+      } finally {
+        btn.disabled = false;
+        btn.innerText = "🚀 Update auf Server bereitstellen";
       }
     }
 

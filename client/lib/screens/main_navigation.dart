@@ -1,10 +1,12 @@
-﻿import '../models/transfer_item.dart';
+import '../models/transfer_item.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/app_state.dart';
 import 'device_list_screen.dart';
 import 'transfers_screen.dart';
 import 'settings_screen.dart';
+
+import '../services/update_service.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -16,12 +18,58 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
   bool _showingDialog = false;
+  bool _checkedForUpdate = false;
 
   final List<Widget> _screens = const [
     DeviceListScreen(),
     TransfersScreen(),
     SettingsScreen(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkAutoUpdate();
+    });
+  }
+
+  Future<void> _checkAutoUpdate() async {
+    if (_checkedForUpdate) return;
+    _checkedForUpdate = true;
+
+    try {
+      final state = Provider.of<AppState>(context, listen: false);
+      final updateService = UpdateService(serverUrl: state.storage.serverUrl);
+      final update = await updateService.checkForUpdate();
+
+      if (update != null && update.hasUpdate && mounted) {
+        ScaffoldMessenger.of(context).showMaterialBanner(
+          MaterialBanner(
+            leading: const Icon(Icons.system_update, color: Colors.teal),
+            content: Text('CrossDrop Update v${update.latestVersion} ist verfügbar!'),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+                },
+                child: const Text('Später'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentMaterialBanner();
+                  setState(() => _currentIndex = 2);
+                },
+                child: const Text('Aktualisieren'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Auto-Update check error: $e');
+    }
+  }
 
   void _checkPendingApproval(BuildContext context, AppState state) {
     if (state.pendingApprovalItem != null && !_showingDialog) {
