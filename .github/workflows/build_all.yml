@@ -213,8 +213,16 @@ jobs:
           tag_name: ${{ steps.release_version.outputs.tag }}
           name: "CrossDrop ${{ steps.release_version.outputs.tag }} (Windows Setup .exe, Linux .deb, Android .apk)"
           body: |
-            ## Fertige Downloads für CrossDrop 🚀
-            
+            ## 🚀 Großes Update ${{ steps.release_version.outputs.tag }}
+
+            ### ✨ Neue Highlights & Funktionen:
+            - 📧 **Cross-Account Transfer via E-Mail:** Senden Sie Dateien direkt an andere registrierte CrossDrop-Accounts durch Eingabe der E-Mail-Adresse!
+            - 🛡️ **Obligatorische Empfänger-Bestätigung:** Der Empfänger muss eingehende Dateien fremder Accounts immer explizit im Bestätigungsdialog annehmen, bevor der Download startet.
+            - 🌐 **Automatisches VPN Server-Relay:** Sichere und firewall-durchdringende Übertragung über das VPN-Relay auch zwischen verschiedenen Netzwerken und Mobilfunk.
+            - 📊 **Synchronisierte Live-Fortschrittsanzeige:** Beide Geräte zeigen in Echtzeit denselben synchronisierten Übertragungsfortschritt, Geschwindigkeit und Restzeit (ETA).
+            - 🔒 **Direkte Zielgeräte-Fixierung:** Keine doppelte Geräteauswahl mehr nach dem Antippen eines Geräts.
+
+            ### 📦 Fertige Downloads:
             - 🪟 **Windows Setup-Installer (.exe):** `CrossDrop-Windows-Setup.exe` (Empfohlen: Installation mit Desktop- & Startmenü-Verknüpfung)
             - 🪟 **Windows Portable (.zip):** `CrossDrop-Windows-x64.zip` (Ohne Installation direkt starten)
             - 🐧 **Linux (Debian/Ubuntu):** `crossdrop_*.deb`

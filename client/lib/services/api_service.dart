@@ -182,6 +182,24 @@ class ApiService {
     }
   }
 
+  // Lookup Recipient by Email for Cross-Account Transfer
+  Future<Map<String, dynamic>> lookupRecipient(String email) async {
+    final uri = Uri.parse('$_baseUrl/api/transfer/lookup-recipient').replace(
+      queryParameters: {'email': email.trim()},
+    );
+    final response = await http.get(uri, headers: _headers()).timeout(const Duration(seconds: 8));
+
+    if (response.statusCode == 401) {
+      throw AuthExpiredException();
+    }
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } else {
+      final err = _parseError(response.body);
+      throw Exception(err.isNotEmpty ? err : 'Empfänger konnte nicht überprüft werden (${response.statusCode})');
+    }
+  }
+
   // Delete Relay File after download
   Future<void> deleteRelayFile(String taskId) async {
     try {

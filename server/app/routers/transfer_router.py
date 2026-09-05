@@ -29,7 +29,7 @@ def send_signal(
 ):
     target = db.query(Device).filter(
         Device.id == signal.target_device_id,
-        Device.owner_id == current_user.id
+        Device.user_id == current_user.id
     ).first()
 
     if not target:
@@ -43,6 +43,51 @@ def send_signal(
     pending_signals[signal.target_device_id].append(payload)
 
     return {"status": "signal_queued", "target_device": target.name}
+
+@router.get("/lookup-recipient")
+def lookup_recipient(
+    email: str = Query(..., min_length=3),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    clean_email = email.strip().lower()
+    if clean_email == current_user.email.strip().lower():
+        raise HTTPException(
+            status_code=400,
+            detail="Sie können nicht an Ihre eigene E-Mail-Adresse senden. Wählen Sie Ihr Gerät bitte direkt aus der Geräteliste."
+        )
+
+    recipient = db.query(User).filter(User.email.ilike(clean_email)).first()
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Kein Benutzer mit dieser E-Mail-Adresse registriert.")
+
+    from app.routers.vpn_router import active_tunnels
+    devices = db.query(Device).filter(Device.user_id == recipient.id).all()
+
+    online_device = None
+    for d in devices:
+        if d.id in active_tunnels:
+            online_device = d
+            break
+
+    if not online_device and devices:
+        now = datetime.utcnow()
+        for d in devices:
+            if d.is_online and (now - d.last_seen).total_seconds() < 60:
+                online_device = d
+                break
+
+    target_dev = online_device or (devices[0] if devices else None)
+
+    return {
+        "found": True,
+        "recipient_id": recipient.id,
+        "email": recipient.email,
+        "username": recipient.username,
+        "has_online_device": online_device is not None,
+        "target_device_id": target_dev.id if target_dev else None,
+        "target_device_name": target_dev.name if target_dev else None,
+    }
 
 @router.get("/signals/{device_id}")
 def get_pending_signals(

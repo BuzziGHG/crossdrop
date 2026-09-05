@@ -187,18 +187,43 @@ class _MainNavigationState extends State<MainNavigation> {
           context: context,
           barrierDismissible: false,
           builder: (ctx) {
+            final isExternal = item.isCrossAccount || item.senderEmail != null;
+
             return AlertDialog(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              icon: const Icon(Icons.file_download, size: 40, color: Colors.teal),
-              title: const Text('Eingehende Datei'),
+              icon: Icon(
+                isExternal ? Icons.mark_email_unread_rounded : Icons.file_download,
+                size: 40,
+                color: isExternal ? Colors.orange : Colors.teal,
+              ),
+              title: Text(isExternal ? 'Eingehende Datei (Anderer Account)' : 'Eingehende Datei'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Gerät "${item.peerDeviceName}" möchte eine Datei an Sie senden:',
-                    style: const TextStyle(fontSize: 14),
-                  ),
+                  if (isExternal) ...[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text(
+                        '🌐 Cross-Account Transfer via VPN',
+                        style: TextStyle(color: Colors.orange, fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                    Text(
+                      'Benutzer "${item.senderEmail ?? item.peerDeviceName}" möchte eine Datei an Sie senden:',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                  ] else ...[
+                    Text(
+                      'Gerät "${item.peerDeviceName}" möchte eine Datei an Sie senden:',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   Container(
                     padding: const EdgeInsets.all(12),
@@ -208,7 +233,7 @@ class _MainNavigationState extends State<MainNavigation> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.insert_drive_file, color: Colors.teal),
+                        Icon(Icons.insert_drive_file, color: isExternal ? Colors.orange : Colors.teal),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Column(
@@ -247,7 +272,7 @@ class _MainNavigationState extends State<MainNavigation> {
                     Navigator.pop(ctx);
                     state.approveTransfer(true);
                   },
-                  child: const Text('Annehmen'),
+                  child: const Text('Annehmen & Empfangen'),
                 ),
               ],
             );

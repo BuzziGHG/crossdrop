@@ -12,10 +12,12 @@ class TransferItem {
   final TransferDirection direction;
   final String peerDeviceName;
   final String? peerDeviceId;
-  final String peerIp;
+  String peerIp;
   final int peerPort;
   final String? checksumSha256;
   String mode; // 'LAN' or 'VPN' or 'Relay'
+  final String? senderEmail;
+  final bool isCrossAccount;
   String? errorMessage;
   final DateTime createdAt;
 
@@ -34,6 +36,8 @@ class TransferItem {
     required this.peerPort,
     this.checksumSha256,
     this.mode = 'LAN',
+    this.senderEmail,
+    this.isCrossAccount = false,
     this.errorMessage,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();

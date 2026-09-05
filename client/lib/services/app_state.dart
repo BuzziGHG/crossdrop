@@ -286,6 +286,18 @@ class AppState extends ChangeNotifier {
       return;
     }
 
+    if (type == 'transfer_rejected') {
+      final taskId = data['task_id'];
+      final transfer = transfers.where((t) => t.id == taskId).firstOrNull;
+      if (transfer != null) {
+        transfer.status = TransferStatus.rejected;
+        transfer.errorMessage = 'Vom Empfänger abgelehnt.';
+        transfer.speedBytesPerSecond = 0;
+        notifyListeners();
+      }
+      return;
+    }
+
     if (type == 'relay_receiver_progress') {
       final taskId = data['task_id'];
       final bytes = data['bytes'] as int? ?? 0;
@@ -307,23 +319,36 @@ class AppState extends ChangeNotifier {
       final senderName = data['sender_name'] ?? 'Gerät';
       final senderId = data['sender_device_id'] ?? '';
       final mode = data['mode'] ?? 'Relay';
+      final senderEmail = data['sender_email'] as String?;
+      final isCrossAccount = data['is_cross_account'] == true;
 
       final item = TransferItem(
         id: taskId,
         filename: filename,
         totalBytes: fileSize,
         direction: TransferDirection.receive,
-        peerDeviceName: senderName,
+        peerDeviceName: isCrossAccount && senderEmail != null ? senderEmail : senderName,
         peerDeviceId: senderId,
         peerIp: 'Server-Relay',
         peerPort: 2603,
         mode: mode,
+        senderEmail: senderEmail,
+        isCrossAccount: isCrossAccount,
         status: TransferStatus.pending,
       );
 
       final accepted = await _handleIncomingTransferRequest(item);
       if (accepted) {
         _startRelayDownload(item, taskId);
+      } else {
+        // Inform sender immediately that transfer was declined
+        if (vpnTunnel.isConnected && senderId.isNotEmpty) {
+          vpnTunnel.sendThroughTunnel({
+            'type': 'transfer_rejected',
+            'task_id': taskId,
+            'target_device_id': senderId,
+          });
+        }
       }
     }
   }
@@ -506,6 +531,60 @@ class AppState extends ChangeNotifier {
       );
     } finally {
       // Keep activeSendingTaskId visible briefly for UI to show finished state
+      Future.delayed(const Duration(seconds: 4), () {
+        if (activeSendingTaskId != null) {
+          activeSendingTaskId = null;
+          notifyListeners();
+        }
+      });
+    }
+  }
+
+  Future<void> startSendingFileByEmail({
+    required File file,
+    required String recipientEmail,
+  }) async {
+    // 1. Verify recipient with server
+    final recipient = await api.lookupRecipient(recipientEmail);
+    final targetDeviceId = recipient['target_device_id'] as String?;
+    final targetDeviceName = recipient['target_device_name'] as String? ??
+        recipient['username'] as String? ??
+        'Empfänger';
+    final hasOnlineDevice = recipient['has_online_device'] as bool? ?? false;
+
+    if (targetDeviceId == null || !hasOnlineDevice) {
+      throw Exception('Der Account "$recipientEmail" hat momentan kein empfangsbereites Gerät online.');
+    }
+
+    // 2. Transfer via VPN Server-Relay with cross-account approval required
+    try {
+      await TransferClient.sendFile(
+        file: file,
+        targetIp: '10.42.0.1',
+        targetPort: 2603,
+        targetDeviceName: targetDeviceName,
+        senderDeviceName: deviceName,
+        connectionMode: 'VPN',
+        targetDeviceId: targetDeviceId,
+        senderDeviceId: storage.deviceId,
+        serverUrl: storage.serverUrl,
+        token: storage.token,
+        vpnTunnel: vpnTunnel,
+        isCrossAccount: true,
+        senderEmail: storage.email,
+        recipientEmail: recipientEmail.trim(),
+        onProgress: (item) {
+          activeSendingTaskId = item.id;
+          final idx = transfers.indexWhere((t) => t.id == item.id);
+          if (idx != -1) {
+            transfers[idx] = item;
+          } else {
+            transfers.insert(0, item);
+          }
+          notifyListeners();
+        },
+      );
+    } finally {
       Future.delayed(const Duration(seconds: 4), () {
         if (activeSendingTaskId != null) {
           activeSendingTaskId = null;

@@ -26,13 +26,16 @@ class TransferClient {
     String? serverUrl,
     String? token,
     VpnTunnelService? vpnTunnel,
+    bool isCrossAccount = false,
+    String? senderEmail,
+    String? recipientEmail,
     required TransferClientProgressCallback onProgress,
   }) async {
     final taskId = const Uuid().v4();
     final filename = p.basename(file.path);
     final fileSize = await file.length();
 
-    final isVpnMode = connectionMode == 'VPN' || targetIp.startsWith('10.42.0.');
+    final isVpnMode = connectionMode == 'VPN' || targetIp.startsWith('10.42.0.') || isCrossAccount;
 
     final item = TransferItem(
       id: taskId,
@@ -40,11 +43,13 @@ class TransferClient {
       localFilePath: file.path,
       totalBytes: fileSize,
       direction: TransferDirection.send,
-      peerDeviceName: targetDeviceName,
+      peerDeviceName: isCrossAccount && recipientEmail != null ? recipientEmail : targetDeviceName,
       peerDeviceId: targetDeviceId,
       peerIp: isVpnMode ? 'Server-Relay' : targetIp,
       peerPort: isVpnMode ? 2603 : targetPort,
       mode: isVpnMode ? 'Relay' : connectionMode,
+      senderEmail: senderEmail,
+      isCrossAccount: isCrossAccount,
       status: TransferStatus.connecting,
     );
 
@@ -64,6 +69,8 @@ class TransferClient {
           serverUrl: serverUrl,
           token: token ?? '',
           vpnTunnel: vpnTunnel,
+          isCrossAccount: isCrossAccount,
+          senderEmail: senderEmail,
           onProgress: onProgress,
         );
         return;
@@ -256,6 +263,8 @@ class TransferClient {
     required String serverUrl,
     required String token,
     VpnTunnelService? vpnTunnel,
+    bool isCrossAccount = false,
+    String? senderEmail,
     required TransferClientProgressCallback onProgress,
   }) async {
     final filename = p.basename(file.path);
@@ -276,6 +285,8 @@ class TransferClient {
         'sender_device_id': senderDeviceId,
         'target_device_id': targetDeviceId,
         'mode': 'Relay',
+        'is_cross_account': isCrossAccount,
+        if (senderEmail != null) 'sender_email': senderEmail,
       });
     }
 

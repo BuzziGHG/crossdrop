@@ -27,6 +27,12 @@ class _SendFileScreenState extends State<SendFileScreen> {
   ConnectionMode _connectionMode = ConnectionMode.lan;
   bool _isSending = false;
 
+  int _sendModeTab = 0; // 0: Eigenes Gerät, 1: An anderen Account (E-Mail)
+  final TextEditingController _emailController = TextEditingController();
+  bool _isCheckingEmail = false;
+  Map<String, dynamic>? _recipientData;
+  String? _emailError;
+
   @override
   void initState() {
     super.initState();
@@ -35,6 +41,12 @@ class _SendFileScreenState extends State<SendFileScreen> {
     if (_selectedDevice != null) {
       _connectionMode = _selectedDevice!.preferredMode;
     }
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
   }
 
   Future<void> _pickFile() async {
@@ -46,8 +58,62 @@ class _SendFileScreenState extends State<SendFileScreen> {
     }
   }
 
+  Future<void> _checkEmail() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      setState(() {
+        _emailError = 'Bitte eine gültige E-Mail-Adresse eingeben.';
+        _recipientData = null;
+      });
+      return;
+    }
+
+    final state = Provider.of<AppState>(context, listen: false);
+    setState(() {
+      _isCheckingEmail = true;
+      _emailError = null;
+    });
+
+    try {
+      final res = await state.api.lookupRecipient(email);
+      if (mounted) {
+        setState(() {
+          _recipientData = res;
+          _emailError = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _recipientData = null;
+          _emailError = e.toString().replaceAll('Exception: ', '');
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isCheckingEmail = false;
+        });
+      }
+    }
+  }
+
   Future<void> _send() async {
-    if (_selectedFile == null || _selectedDevice == null) return;
+    if (_selectedFile == null) return;
+    if (_sendModeTab == 0 && _selectedDevice == null) return;
+    if (_sendModeTab == 1 && (_recipientData == null || _recipientData!['has_online_device'] != true)) {
+      await _checkEmail();
+      if (_recipientData == null || _recipientData!['has_online_device'] != true) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_emailError ?? 'Kein empfangsbereites Gerät für diesen Account online.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+    }
 
     final state = Provider.of<AppState>(context, listen: false);
 
@@ -56,11 +122,18 @@ class _SendFileScreenState extends State<SendFileScreen> {
     });
 
     try {
-      await state.startSendingFile(
-        file: _selectedFile!,
-        targetDevice: _selectedDevice!,
-        mode: _connectionMode,
-      );
+      if (_sendModeTab == 0) {
+        await state.startSendingFile(
+          file: _selectedFile!,
+          targetDevice: _selectedDevice!,
+          mode: _connectionMode,
+        );
+      } else {
+        await state.startSendingFileByEmail(
+          file: _selectedFile!,
+          recipientEmail: _emailController.text.trim(),
+        );
+      }
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -398,134 +471,324 @@ class _SendFileScreenState extends State<SendFileScreen> {
             ),
             const SizedBox(height: 24),
 
-            // 2. Target Device (Confirmed card if preselected, or dropdown if opened generic)
-            Text(
-              'Zielgerät',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            if (widget.preselectedDevice != null && _selectedDevice != null) ...[
-              Card(
-                elevation: 1,
-                color: theme.colorScheme.primaryContainer.withOpacity(0.35),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
+            // 2. Mode Selector: Own Device vs Other Account via Email
+            SegmentedButton<int>(
+              segments: const [
+                ButtonSegment<int>(
+                  value: 0,
+                  icon: Icon(Icons.devices),
+                  label: Text('Meine Geräte'),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ButtonSegment<int>(
+                  value: 1,
+                  icon: Icon(Icons.mail_outline),
+                  label: Text('Per E-Mail senden'),
+                ),
+              ],
+              selected: {_sendModeTab},
+              onSelectionChanged: (Set<int> newSelection) {
+                setState(() {
+                  _sendModeTab = newSelection.first;
+                  if (_sendModeTab == 1) {
+                    _connectionMode = ConnectionMode.vpn;
+                  }
+                });
+              },
+            ),
+            const SizedBox(height: 24),
+
+            if (_sendModeTab == 0) ...[
+              // Target Device Selection (Confirmed card if preselected, or dropdown if opened generic)
+              Text(
+                'Zielgerät',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              if (widget.preselectedDevice != null && _selectedDevice != null) ...[
+                Card(
+                  elevation: 1,
+                  color: theme.colorScheme.primaryContainer.withOpacity(0.35),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.check, size: 18, color: Colors.white),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _selectedDevice!.name,
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              ),
+                              Text(
+                                '${_selectedDevice!.platform.toUpperCase()} • Bereit zur Übertragung',
+                                style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.15),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text(
+                            'Ausgewählt',
+                            style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ] else if (state.devices.isEmpty) ...[
+                const Text('Keine anderen registrierten Geräte vorhanden.')
+              ] else ...[
+                DropdownButtonFormField<DeviceModel>(
+                  value: _selectedDevice,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.devices),
+                  ),
+                  items: state.devices.map((dev) {
+                    return DropdownMenuItem<DeviceModel>(
+                      value: dev,
+                      child: Row(
+                        children: [
+                          Text(dev.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                          const SizedBox(width: 8),
+                          Text('(${dev.platform})', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                          if (!dev.isOnline) ...[
+                            const SizedBox(width: 8),
+                            const Text('[Offline]', style: TextStyle(color: Colors.red, fontSize: 12)),
+                          ],
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    setState(() {
+                      _selectedDevice = val;
+                    });
+                  },
+                ),
+              ],
+              const SizedBox(height: 24),
+
+              // Connection Mode Selector (LAN vs VPN)
+              Text(
+                'Übertragungsweg auswählen',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              RadioListTile<ConnectionMode>(
+                value: ConnectionMode.lan,
+                groupValue: _connectionMode,
+                title: const Text('Lokales Netzwerk (LAN / WLAN)'),
+                subtitle: const Text('Maximale Geschwindigkeit P2P (automatischer Relay-Fallback bei Firewall)'),
+                secondary: const Icon(Icons.wifi),
+                onChanged: (val) {
+                  if (val != null) setState(() => _connectionMode = val);
+                },
+              ),
+              RadioListTile<ConnectionMode>(
+                value: ConnectionMode.vpn,
+                groupValue: _connectionMode,
+                title: const Text('VPN / Server-Relay (Unterwegs & Remote)'),
+                subtitle: const Text('Sichere Übertragung über Server-Relay von unterwegs oder mobilem Netz'),
+                secondary: const Icon(Icons.vpn_lock),
+                onChanged: (val) {
+                  if (val != null) setState(() => _connectionMode = val);
+                },
+              ),
+            ] else ...[
+              // Cross-Account E-Mail Mode UI
+              Text(
+                'Empfänger-Account (E-Mail)',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      decoration: InputDecoration(
+                        hintText: 'empfaenger@beispiel.de',
+                        prefixIcon: const Icon(Icons.email_outlined),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      ),
+                      onFieldSubmitted: (_) => _checkEmail(),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  FilledButton.tonal(
+                    onPressed: _isCheckingEmail ? null : _checkEmail,
+                    style: FilledButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: _isCheckingEmail
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Prüfen'),
+                  ),
+                ],
+              ),
+              if (_emailError != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.withOpacity(0.3)),
+                  ),
                   child: Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: theme.colorScheme.primary,
-                          shape: BoxShape.circle,
+                      const Icon(Icons.error_outline, color: Colors.red, size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _emailError!,
+                          style: const TextStyle(color: Colors.red, fontSize: 13),
                         ),
-                        child: const Icon(Icons.check, size: 18, color: Colors.white),
                       ),
-                      const SizedBox(width: 14),
+                    ],
+                  ),
+                ),
+              ],
+              if (_recipientData != null) ...[
+                const SizedBox(height: 12),
+                Card(
+                  elevation: 1,
+                  color: _recipientData!['has_online_device'] == true
+                      ? Colors.green.withOpacity(0.12)
+                      : Colors.orange.withOpacity(0.12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(
+                      color: _recipientData!['has_online_device'] == true
+                          ? Colors.green.withOpacity(0.4)
+                          : Colors.orange.withOpacity(0.4),
+                    ),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Row(
+                      children: [
+                        Icon(
+                          _recipientData!['has_online_device'] == true
+                              ? Icons.check_circle_outline
+                              : Icons.warning_amber_rounded,
+                          color: _recipientData!['has_online_device'] == true ? Colors.green : Colors.orange,
+                          size: 28,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Account: ${_recipientData!['username']} (${_recipientData!['email']})',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                _recipientData!['has_online_device'] == true
+                                    ? 'Zielgerät: ${_recipientData!['target_device_name'] ?? 'Online'} (Empfangsbereit)'
+                                    : 'Aktuell kein Gerät im VPN-Tunnel online',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _recipientData!['has_online_device'] == true
+                                      ? Colors.green[800]
+                                      : Colors.orange[800],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+
+              // Info Box: Secure VPN Relay & Mandatory Confirmation
+              Card(
+                elevation: 0,
+                color: theme.colorScheme.primaryContainer.withOpacity(0.45),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.3)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(14.0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.shield_outlined, color: theme.colorScheme.primary, size: 22),
+                      const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              _selectedDevice!.name,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                              'Sicherer Cross-Account VPN-Transfer',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                                color: theme.colorScheme.primary,
+                              ),
                             ),
-                            Text(
-                              '${_selectedDevice!.platform.toUpperCase()} • Bereit zur Übertragung',
-                              style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Der Versand an andere Accounts erfolgt immer verschlüsselt über das Server-Relay. Der Empfänger muss die Datei vor dem Empfang immer erst annehmen.',
+                              style: TextStyle(fontSize: 12, height: 1.3),
                             ),
                           ],
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Text(
-                          'Ausgewählt',
-                          style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold),
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-            ] else if (state.devices.isEmpty) ...[
-              const Text('Keine anderen registrierten Geräte vorhanden.')
-            ] else ...[
-              DropdownButtonFormField<DeviceModel>(
-                value: _selectedDevice,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.devices),
-                ),
-                items: state.devices.map((dev) {
-                  return DropdownMenuItem<DeviceModel>(
-                    value: dev,
-                    child: Row(
-                      children: [
-                        Text(dev.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        const SizedBox(width: 8),
-                        Text('(${dev.platform})', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                        if (!dev.isOnline) ...[
-                          const SizedBox(width: 8),
-                          const Text('[Offline]', style: TextStyle(color: Colors.red, fontSize: 12)),
-                        ],
-                      ],
-                    ),
-                  );
-                }).toList(),
-                onChanged: (val) {
-                  setState(() {
-                    _selectedDevice = val;
-                  });
-                },
-              ),
             ],
-            const SizedBox(height: 24),
-
-            // 3. Connection Mode Selector (LAN vs VPN)
-            Text(
-              'Übertragungsweg auswählen',
-              style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            RadioListTile<ConnectionMode>(
-              value: ConnectionMode.lan,
-              groupValue: _connectionMode,
-              title: const Text('Lokales Netzwerk (LAN / WLAN)'),
-              subtitle: const Text('Maximale Geschwindigkeit P2P (automatischer Relay-Fallback bei Firewall)'),
-              secondary: const Icon(Icons.wifi),
-              onChanged: (val) {
-                if (val != null) setState(() => _connectionMode = val);
-              },
-            ),
-            RadioListTile<ConnectionMode>(
-              value: ConnectionMode.vpn,
-              groupValue: _connectionMode,
-              title: const Text('VPN / Server-Relay (Unterwegs & Remote)'),
-              subtitle: const Text('Sichere Übertragung über Server-Relay von unterwegs oder mobilem Netz'),
-              secondary: const Icon(Icons.vpn_lock),
-              onChanged: (val) {
-                if (val != null) setState(() => _connectionMode = val);
-              },
-            ),
             const SizedBox(height: 32),
 
-            // 4. Send Button
+            // Send Button
             FilledButton.icon(
               icon: const Icon(Icons.send_rounded),
-              label: const Text('Datei jetzt übertragen'),
+              label: Text(_sendModeTab == 1 ? 'An Empfänger senden' : 'Datei jetzt übertragen'),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 18),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              onPressed: (_selectedFile != null && _selectedDevice != null && !_isSending)
+              onPressed: (_selectedFile != null &&
+                      !_isSending &&
+                      (_sendModeTab == 0
+                          ? _selectedDevice != null
+                          : _emailController.text.trim().isNotEmpty))
                   ? _send
                   : null,
             ),

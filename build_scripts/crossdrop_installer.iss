@@ -1,7 +1,7 @@
 ; Inno Setup Script fuer CrossDrop Windows Installer (.exe)
 [Setup]
 AppName=CrossDrop
-AppVersion=1.0.5
+AppVersion=1.1.0
 DefaultDirName={autopf}\CrossDrop
 DefaultGroupName=CrossDrop
 OutputDir=.

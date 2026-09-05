@@ -47,10 +47,24 @@ async def vpn_tunnel_endpoint(
 
     # 2. Allocate Virtual VPN IP
     vpn_ip = allocate_vpn_ip(device_id)
+
+    # Fetch user email for secure stamping
+    db = SessionLocal()
+    user_email = "Unbekannt"
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if user:
+            user_email = user.email
+    except Exception as ex:
+        logger.error(f"Error fetching user: {ex}")
+    finally:
+        db.close()
+
     active_tunnels[device_id] = {
         "ws": websocket,
         "vpn_ip": vpn_ip,
-        "user_id": user_id
+        "user_id": user_id,
+        "email": user_email
     }
     ip_to_device[vpn_ip] = device_id
 
@@ -90,9 +104,26 @@ async def vpn_tunnel_endpoint(
 
             if target_device_id and target_device_id in active_tunnels:
                 target_tunnel = active_tunnels[target_device_id]
-                # Ensure security: target device must belong to same user
-                if target_tunnel["user_id"] == user_id:
+                msg_type = data.get("type")
+
+                is_same_user = (target_tunnel["user_id"] == user_id)
+                is_cross_allowed = msg_type in (
+                    "transfer_request",
+                    "transfer_rejected",
+                    "relay_ready",
+                    "relay_receiver_progress",
+                    "relay_finished"
+                )
+
+                if is_same_user:
                     await target_tunnel["ws"].send_text(raw_data)
+                elif is_cross_allowed:
+                    if msg_type == "transfer_request":
+                        data["sender_email"] = active_tunnels.get(device_id, {}).get("email", user_email)
+                        data["is_cross_account"] = True
+                        await target_tunnel["ws"].send_text(json.dumps(data))
+                    else:
+                        await target_tunnel["ws"].send_text(raw_data)
                 else:
                     await websocket.send_json({"type": "error", "message": "Zugriff verweigert"})
             else:
