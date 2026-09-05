@@ -5,7 +5,7 @@ class TransferItem {
   final String id;
   final String filename;
   final String? localFilePath;
-  final int totalBytes;
+  int totalBytes;
   int bytesTransferred;
   double speedBytesPerSecond;
   TransferStatus status;
