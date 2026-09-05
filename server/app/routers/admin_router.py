@@ -247,10 +247,10 @@ def admin_dashboard():
       <div class="downloads-grid">
         <div class="download-item">
           <div class="download-info">
-            <h4>🖥️ Windows (10 & 11)</h4>
-            <p>Zip-Archiv entpacken und starten</p>
+            <h4>🖥️ Windows Setup (10 & 11)</h4>
+            <p>Installation mit Desktop-Icon & Startmenü</p>
           </div>
-          <a href="https://github.com/BuzziGHG/crossdrop/releases/download/v1.0.0/CrossDrop-Windows-x64.zip" class="btn" target="_blank">Download .zip</a>
+          <a href="https://github.com/BuzziGHG/crossdrop/releases/download/v1.0.0/CrossDrop-Windows-Setup.exe" class="btn" target="_blank">Download Setup .exe</a>
         </div>
         <div class="download-item">
           <div class="download-info">

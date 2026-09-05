@@ -11,7 +11,8 @@ Wählen Sie einfach Ihr Betriebssystem aus und laden Sie die passende Version he
 
 | Plattform | Dateityp | Download-Link |
 | :--- | :--- | :--- |
-| 🪟 **Windows 10 / 11** | Portable ZIP (`.exe`) | [⬇️ CrossDrop-Windows-x64.zip](https://github.com/BuzziGHG/crossdrop/releases/latest/download/CrossDrop-Windows-x64.zip) |
+| 🪟 **Windows 10 / 11** | Setup-Installer (`.exe`) | [⬇️ CrossDrop-Windows-Setup.exe](https://github.com/BuzziGHG/crossdrop/releases/latest/download/CrossDrop-Windows-Setup.exe) *(Empfohlen)* |
+| 🪟 **Windows (Portabel)** | ZIP-Archiv | [⬇️ CrossDrop-Windows-x64.zip](https://github.com/BuzziGHG/crossdrop/releases/latest/download/CrossDrop-Windows-x64.zip) |
 | 🐧 **Linux (Debian / Ubuntu)** | Paket (`.deb`) | [⬇️ crossdrop_1.0.0_amd64.deb](https://github.com/BuzziGHG/crossdrop/releases/latest/download/crossdrop_1.0.0_amd64.deb) |
 | 📱 **Android** | App-Paket (`.apk`) | [⬇️ crossdrop-release.apk](https://github.com/BuzziGHG/crossdrop/releases/latest/download/crossdrop-release.apk) |
 
@@ -22,7 +23,7 @@ Wählen Sie einfach Ihr Betriebssystem aus und laden Sie die passende Version he
 ## ⚡ Schnellstart: In 3 Schritten zur ersten Dateiübertragung
 
 ### 1. App installieren & starten
-- **Windows:** ZIP entpacken und `crossdrop.exe` starten.
+- **Windows:** `CrossDrop-Windows-Setup.exe` ausführen (erstellt automatisch ein Desktop-Icon) oder portable ZIP entpacken.
 - **Linux:** Paket per Doppelklick oder mit `sudo dpkg -i crossdrop_1.0.0_amd64.deb` installieren.
 - **Android:** Die `.apk` auf das Smartphone laden und antippen (Installation aus Drittquellen erlauben).
 

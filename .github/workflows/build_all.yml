@@ -41,11 +41,29 @@ jobs:
         run: |
           Compress-Archive -Path client\build\windows\x64\runner\Release\* -DestinationPath CrossDrop-Windows-x64.zip
 
-      - name: Upload Windows Artifact
+      - name: Build Windows Setup Installer (.exe)
+        run: |
+          $iscc = Get-Command "ISCC.exe" -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+            $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          } else {
+            $isccPath = $iscc.Source
+          }
+          Write-Host "Compiling Windows Installer using $isccPath..."
+          & "$isccPath" build_scripts\crossdrop_installer.iss
+          Move-Item -Path build_scripts\CrossDrop-Windows-Setup.exe -Destination CrossDrop-Windows-Setup.exe
+
+      - name: Upload Windows Portable Artifact
         uses: actions/upload-artifact@v4
         with:
           name: CrossDrop-Windows-x64
           path: CrossDrop-Windows-x64.zip
+
+      - name: Upload Windows Installer Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrossDrop-Windows-Setup
+          path: CrossDrop-Windows-Setup.exe
 
   # 2. Build Linux (.deb)
   build-linux:
@@ -154,10 +172,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download Windows Artifact
+      - name: Download Windows Portable Artifact
         uses: actions/download-artifact@v4
         with:
           name: CrossDrop-Windows-x64
+          path: ./release-assets
+
+      - name: Download Windows Installer Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: CrossDrop-Windows-Setup
           path: ./release-assets
 
       - name: Download Linux .deb Artifact
@@ -177,14 +201,16 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
           tag_name: v1.0.0
-          name: "CrossDrop v1.0.0 (Windows .exe, Linux .deb, Android .apk)"
+          name: "CrossDrop v1.0.0 (Windows Setup .exe, Linux .deb, Android .apk)"
           body: |
             ## Fertige Downloads für CrossDrop 🚀
             
-            - 🖥️ **Windows (10 & 11):** `CrossDrop-Windows-x64.zip` (entpacken und `crossdrop.exe` starten)
+            - 🪟 **Windows Setup-Installer (.exe):** `CrossDrop-Windows-Setup.exe` (Empfohlen: Installation mit Desktop- & Startmenü-Verknüpfung)
+            - 🪟 **Windows Portable (.zip):** `CrossDrop-Windows-x64.zip` (Ohne Installation direkt starten)
             - 🐧 **Linux (Debian/Ubuntu):** `crossdrop_1.0.0_amd64.deb` (`sudo dpkg -i crossdrop_1.0.0_amd64.deb`)
             - 📱 **Android:** `crossdrop-release.apk` (auf Android installieren)
           files: |
+            ./release-assets/CrossDrop-Windows-Setup.exe
             ./release-assets/CrossDrop-Windows-x64.zip
             ./release-assets/crossdrop_1.0.0_amd64.deb
             ./release-assets/crossdrop-release.apk

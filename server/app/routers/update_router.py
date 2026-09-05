@@ -30,8 +30,8 @@ DEFAULT_METADATA = {
         },
         "windows": {
             "version": "1.0.0",
-            "file_name": "CrossDrop-Windows-x64.zip",
-            "github_fallback": "https://github.com/BuzziGHG/crossdrop/releases/latest/download/CrossDrop-Windows-x64.zip"
+            "file_name": "CrossDrop-Windows-Setup.exe",
+            "github_fallback": "https://github.com/BuzziGHG/crossdrop/releases/latest/download/CrossDrop-Windows-Setup.exe"
         },
         "linux": {
             "version": "1.0.0",
