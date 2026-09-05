@@ -13,6 +13,7 @@ import 'transfer_server.dart';
 import 'transfer_client.dart';
 import 'network_detector.dart';
 import 'vpn_tunnel_service.dart';
+import 'notification_service.dart';
 
 class AppState extends ChangeNotifier {
   final StorageService storage;
@@ -79,6 +80,7 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _init() async {
+    await NotificationService().init();
     if (currentUser != null) {
       try {
         final me = await api.getMe();
@@ -269,6 +271,30 @@ class AppState extends ChangeNotifier {
       transfers.insert(0, item);
     }
     notifyListeners();
+
+    // Live Notification Bar progress update
+    if (item.status == TransferStatus.running) {
+      NotificationService().showTransferProgress(
+        taskId: item.id,
+        filename: item.filename,
+        progressPercent: (item.progress * 100).round(),
+        speed: item.formattedSpeed,
+        eta: item.formattedEta,
+        isSend: item.direction == TransferDirection.send,
+      );
+    } else if (item.status == TransferStatus.completed) {
+      NotificationService().showTransferCompleted(
+        taskId: item.id,
+        filename: item.filename,
+        isSend: item.direction == TransferDirection.send,
+      );
+    } else if (item.status == TransferStatus.failed || item.status == TransferStatus.rejected) {
+      NotificationService().showTransferFailed(
+        taskId: item.id,
+        filename: item.filename,
+        reason: item.errorMessage ?? (item.status == TransferStatus.rejected ? 'Abgelehnt' : 'Fehlgeschlagen'),
+      );
+    }
   }
 
   Future<void> _handleTunnelData(Map<String, dynamic> data) async {
@@ -281,7 +307,7 @@ class AppState extends ChangeNotifier {
         transfer.bytesTransferred = transfer.totalBytes;
         transfer.speedBytesPerSecond = 0;
         transfer.errorMessage = null;
-        notifyListeners();
+        _handleTransferProgress(transfer);
       }
       return;
     }
@@ -293,7 +319,7 @@ class AppState extends ChangeNotifier {
         transfer.status = TransferStatus.rejected;
         transfer.errorMessage = 'Vom Empfänger abgelehnt.';
         transfer.speedBytesPerSecond = 0;
-        notifyListeners();
+        _handleTransferProgress(transfer);
       }
       return;
     }
@@ -307,7 +333,7 @@ class AppState extends ChangeNotifier {
         transfer.bytesTransferred = (transfer.totalBytes * 0.50 + bytes * 0.50).round();
         transfer.speedBytesPerSecond = speed;
         transfer.errorMessage = 'Phase 2: Empfänger lädt Datei herunter...';
-        notifyListeners();
+        _handleTransferProgress(transfer);
       }
       return;
     }
@@ -444,7 +470,7 @@ class AppState extends ChangeNotifier {
               : (item.speedBytesPerSecond * 0.4 + currentSpeed * 0.6);
           lastCheckBytes = receivedBytes;
           lastTime = now;
-          notifyListeners();
+          _handleTransferProgress(item);
 
           // Sync progress back to sender over tunnel
           if (vpnTunnel.isConnected && item.peerDeviceId != null) {
@@ -465,7 +491,7 @@ class AppState extends ChangeNotifier {
       item.status = TransferStatus.completed;
       item.bytesTransferred = item.totalBytes > 0 ? item.totalBytes : receivedBytes;
       item.speedBytesPerSecond = 0;
-      notifyListeners();
+      _handleTransferProgress(item);
 
       // Clean up temp file on server
       await api.deleteRelayFile(taskId);
@@ -482,7 +508,7 @@ class AppState extends ChangeNotifier {
       await sink.close();
       item.status = TransferStatus.failed;
       item.errorMessage = 'Download-Fehler: $e';
-      notifyListeners();
+      _handleTransferProgress(item);
     } finally {
       client.close();
     }
@@ -520,13 +546,7 @@ class AppState extends ChangeNotifier {
         vpnTunnel: vpnTunnel,
         onProgress: (item) {
           activeSendingTaskId = item.id;
-          final idx = transfers.indexWhere((t) => t.id == item.id);
-          if (idx != -1) {
-            transfers[idx] = item;
-          } else {
-            transfers.insert(0, item);
-          }
-          notifyListeners();
+          _handleTransferProgress(item);
         },
       );
     } finally {
@@ -575,13 +595,7 @@ class AppState extends ChangeNotifier {
         recipientEmail: recipientEmail.trim(),
         onProgress: (item) {
           activeSendingTaskId = item.id;
-          final idx = transfers.indexWhere((t) => t.id == item.id);
-          if (idx != -1) {
-            transfers[idx] = item;
-          } else {
-            transfers.insert(0, item);
-          }
-          notifyListeners();
+          _handleTransferProgress(item);
         },
       );
     } finally {
