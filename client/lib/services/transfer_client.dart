@@ -271,7 +271,8 @@ class TransferClient {
     final fileSize = await file.length();
 
     item.status = TransferStatus.running;
-    item.errorMessage = 'Phase 1: Wird an Server-Relay übertragen...';
+    item.errorMessage = 'Verbinde mit Empfänger...';
+    item.bytesTransferred = 0;
     onProgress(item);
 
     // 1. Notify receiver over WebSocket tunnel
@@ -290,9 +291,9 @@ class TransferClient {
       });
     }
 
-    // 2. Stream upload to server relay
+    // 2. Stream upload directly to server relay in-memory pipe
     final uploadUri = Uri.parse(
-      '$serverUrl/api/transfer/relay/upload/$taskId'
+      '$serverUrl/api/transfer/relay/pipe/$taskId/upload'
       '?filename=${Uri.encodeComponent(filename)}'
       '&size=$fileSize'
       '&sender_name=${Uri.encodeComponent(senderDeviceName)}',
@@ -325,9 +326,10 @@ class TransferClient {
           request.add(chunk);
           await request.flush();
           sentBytes += chunk.length;
-          // Scale Phase 1 (server upload) to 0-50%
-          item.bytesTransferred = (sentBytes * 0.50).round();
-          item.errorMessage = 'Phase 1: Wird an Server-Relay übertragen...';
+
+          // 1:1 Live synchronous progress (0% -> 100%)
+          item.bytesTransferred = (sentBytes >= fileSize) ? (fileSize * 0.98).round() : sentBytes;
+          item.errorMessage = null;
 
           final now = DateTime.now();
           final ms = now.difference(lastTime).inMilliseconds;
@@ -339,47 +341,27 @@ class TransferClient {
                 : (item.speedBytesPerSecond * 0.4 + currentSpeed * 0.6);
             lastCheckBytes = sentBytes;
             lastTime = now;
-            item.errorMessage = 'Phase 1/2: Datei wird an Server übertragen...';
             onProgress(item);
-
-            // Broadcast real-time upload progress to receiver over WebSocket tunnel
-            if (vpnTunnel != null && vpnTunnel.isConnected) {
-              vpnTunnel.sendThroughTunnel({
-                'type': 'relay_sender_progress',
-                'task_id': taskId,
-                'sent_bytes': sentBytes,
-                'total_bytes': fileSize,
-                'speed': item.speedBytesPerSecond,
-                'target_device_id': targetDeviceId,
-              });
-            }
           }
         }
       } finally {
         await raf.close();
       }
 
+      item.bytesTransferred = (fileSize * 0.98).round();
+      item.errorMessage = 'Empfänger schließt Speicherung ab...';
+      onProgress(item);
+
       final response = await request.close();
       final responseBody = await response.transform(utf8.decoder).join();
       client.close();
 
       if (response.statusCode == 200) {
-        // Stage 1 (Server Upload) done! Stage 2 (Receiver download) begins!
-        item.status = TransferStatus.running;
-        item.bytesTransferred = (fileSize * 0.50).round();
-        item.errorMessage = 'Phase 2: Empfänger lädt Datei herunter...';
+        item.status = TransferStatus.completed;
+        item.bytesTransferred = fileSize;
         item.speedBytesPerSecond = 0;
+        item.errorMessage = null;
         onProgress(item);
-
-        // Notify target device that upload is complete on server relay
-        if (vpnTunnel != null && vpnTunnel.isConnected) {
-          vpnTunnel.sendThroughTunnel({
-            'type': 'relay_ready',
-            'task_id': taskId,
-            'target_device_id': targetDeviceId,
-            'sender_device_id': senderDeviceId,
-          });
-        }
       } else {
         item.status = TransferStatus.failed;
         item.errorMessage = 'Relay-Upload fehlgeschlagen (HTTP ${response.statusCode}): $responseBody';

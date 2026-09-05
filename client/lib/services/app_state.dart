@@ -337,37 +337,12 @@ class AppState extends ChangeNotifier {
     }
 
     if (type == 'relay_sender_progress') {
-      final taskId = data['task_id'];
-      final sentBytes = data['sent_bytes'] as int? ?? 0;
-      final totalBytes = data['total_bytes'] as int? ?? 0;
-      final speed = (data['speed'] as num?)?.toDouble() ?? 0.0;
-      final transfer = transfers.where((t) => t.id == taskId).firstOrNull;
-      if (transfer != null && (transfer.status == TransferStatus.running || transfer.status == TransferStatus.pending)) {
-        transfer.status = TransferStatus.running;
-        if (totalBytes > 0 && transfer.totalBytes <= 0) {
-          transfer.totalBytes = totalBytes;
-        }
-        // Scale Phase 1: 0% to 50%
-        transfer.bytesTransferred = (sentBytes * 0.50).round();
-        transfer.speedBytesPerSecond = speed;
-        transfer.errorMessage = 'Phase 1/2: Sender überträgt an Server...';
-        _handleTransferProgress(transfer);
-      }
+      // Direct streaming pipe tracks true 1:1 live progress locally
       return;
     }
 
     if (type == 'relay_receiver_progress') {
-      final taskId = data['task_id'];
-      final bytes = data['bytes'] as int? ?? 0;
-      final speed = (data['speed'] as num?)?.toDouble() ?? 0.0;
-      final transfer = transfers.where((t) => t.id == taskId).firstOrNull;
-      if (transfer != null && transfer.status == TransferStatus.running) {
-        // Scale Phase 2: 50% to 100%
-        transfer.bytesTransferred = (transfer.totalBytes * 0.50 + bytes * 0.50).round();
-        transfer.speedBytesPerSecond = speed;
-        transfer.errorMessage = 'Phase 2/2: Empfänger lädt Datei herunter...';
-        _handleTransferProgress(transfer);
-      }
+      // Direct streaming pipe tracks true 1:1 live progress locally
       return;
     }
 
@@ -415,39 +390,10 @@ class AppState extends ChangeNotifier {
   Future<void> _startRelayDownload(TransferItem item, String taskId) async {
     item.status = TransferStatus.running;
     item.bytesTransferred = 0;
-    item.errorMessage = 'Phase 1: Warte auf Bereitstellung durch Sender...';
+    item.errorMessage = 'Verbinde mit Sender über Server-Relay...';
     _handleTransferProgress(item);
 
-    // 1. Wait until the file is completely uploaded and ready on the server relay
-    bool ready = false;
-    for (int i = 0; i < 300; i++) {
-      try {
-        final infoRes = await http.get(
-          Uri.parse('${storage.serverUrl}/api/transfer/relay/info/$taskId'),
-        ).timeout(const Duration(seconds: 4));
-        if (infoRes.statusCode == 200) {
-          final meta = jsonDecode(infoRes.body);
-          final serverSize = meta['size'] as int? ?? 0;
-          if (item.totalBytes <= 0 || serverSize >= item.totalBytes) {
-            if (item.totalBytes <= 0 && serverSize > 0) {
-              item.totalBytes = serverSize;
-            }
-            ready = true;
-            break;
-          }
-        }
-      } catch (_) {}
-      await Future.delayed(const Duration(seconds: 1));
-    }
-
-    if (!ready) {
-      item.status = TransferStatus.failed;
-      item.errorMessage = 'Zeitüberschreitung: Datei wurde vom Sender nicht bereitgestellt.';
-      _handleTransferProgress(item);
-      return;
-    }
-
-    // 2. Prepare destination path
+    // 1. Prepare destination path
     String downloadDir = storage.downloadPath ?? '';
     if (downloadDir.isEmpty) {
       if (Platform.isAndroid) {
@@ -476,14 +422,15 @@ class AppState extends ChangeNotifier {
     final targetFile = File(finalPath);
     final sink = targetFile.openWrite(mode: FileMode.write);
 
-    // 3. Stream download using HttpClient
+    // 2. Stream download directly from server relay in-memory pipe
     final client = HttpClient();
+    client.idleTimeout = const Duration(seconds: 120);
+    client.connectionTimeout = const Duration(seconds: 30);
     try {
-      item.status = TransferStatus.running;
-      item.errorMessage = 'Phase 2: Lade Datei herunter...';
+      item.errorMessage = 'Streaming von Sender läuft...';
       _handleTransferProgress(item);
 
-      final downloadUri = Uri.parse('${storage.serverUrl}/api/transfer/relay/download/$taskId');
+      final downloadUri = Uri.parse('${storage.serverUrl}/api/transfer/relay/pipe/$taskId/download');
       final request = await client.getUrl(downloadUri);
       if (storage.token != null) {
         request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${storage.token}');
@@ -494,15 +441,21 @@ class AppState extends ChangeNotifier {
         throw Exception('Server-Download fehlgeschlagen (HTTP ${response.statusCode})');
       }
 
+      if (response.contentLength > 0 && item.totalBytes <= 0) {
+        item.totalBytes = response.contentLength;
+      }
+
       int receivedBytes = 0;
       int lastCheckBytes = 0;
       DateTime lastTime = DateTime.now();
 
       await for (final chunk in response) {
         sink.add(chunk);
-        // Scale Phase 2 (50% to 100%)
-        item.bytesTransferred = (item.totalBytes * 0.50 + receivedBytes * 0.50).round();
-        item.errorMessage = 'Phase 2/2: Empfänger lädt Datei herunter...';
+        receivedBytes += chunk.length;
+
+        // 1:1 Live synchronous progress (0% -> 100%)
+        item.bytesTransferred = receivedBytes;
+        item.errorMessage = null;
 
         final now = DateTime.now();
         final ms = now.difference(lastTime).inMilliseconds;
@@ -515,17 +468,6 @@ class AppState extends ChangeNotifier {
           lastCheckBytes = receivedBytes;
           lastTime = now;
           _handleTransferProgress(item);
-
-          // Sync progress back to sender over tunnel
-          if (vpnTunnel.isConnected && item.peerDeviceId != null) {
-            vpnTunnel.sendThroughTunnel({
-              'type': 'relay_receiver_progress',
-              'task_id': taskId,
-              'bytes': receivedBytes,
-              'speed': item.speedBytesPerSecond,
-              'target_device_id': item.peerDeviceId,
-            });
-          }
         }
       }
 
@@ -545,8 +487,10 @@ class AppState extends ChangeNotifier {
       item.errorMessage = null;
       _handleTransferProgress(item);
 
-      // Clean up temp file on server
-      await api.deleteRelayFile(taskId);
+      // Clean up relay task on server (best effort)
+      try {
+        await api.deleteRelayFile(taskId);
+      } catch (_) {}
 
       // Notify sender that download is 100% complete!
       if (vpnTunnel.isConnected && item.peerDeviceId != null) {

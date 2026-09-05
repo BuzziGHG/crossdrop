@@ -1,10 +1,11 @@
 import os
 import json
 import logging
+import asyncio
 from datetime import datetime
 from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from app.database import get_db, User, Device
 from app.schemas import TransferSignal
@@ -97,7 +98,175 @@ def get_pending_signals(
     signals = pending_signals.pop(device_id, [])
     return {"signals": signals}
 
-# --- Server Relay Endpoints for Zero-Config Remote Transfers ---
+# --- Zero-Disk In-Memory Streaming Relay Pipe ---
+
+class RelayPipe:
+    def __init__(self, task_id: str, filename: str = "transfer.bin", total_size: int = 0, sender_name: str = "Gerät"):
+        self.task_id = task_id
+        self.filename = filename
+        self.total_size = total_size
+        self.sender_name = sender_name
+        self.created_at = datetime.utcnow()
+        # Bounded queue holds max 16 chunks (~1 MB total in RAM). Zero bytes written to disk!
+        self.queue: asyncio.Queue = asyncio.Queue(maxsize=16)
+        self.sender_connected = asyncio.Event()
+        self.receiver_connected = asyncio.Event()
+        self.receiver_finished = asyncio.Event()
+        self.aborted = False
+        self.error: Optional[str] = None
+
+active_pipes: Dict[str, RelayPipe] = {}
+
+@router.post("/relay/pipe/{task_id}/upload")
+async def relay_pipe_upload(
+    task_id: str,
+    request: Request,
+    filename: str = Query("transfer.bin"),
+    size: int = Query(0),
+    sender_name: str = Query("Gerät")
+):
+    """
+    Zero-disk in-memory streaming upload.
+    Waits for receiver to connect, then streams chunks directly into memory queue.
+    """
+    pipe = active_pipes.get(task_id)
+    if not pipe:
+        pipe = RelayPipe(task_id=task_id, filename=filename, total_size=size, sender_name=sender_name)
+        active_pipes[task_id] = pipe
+    else:
+        pipe.filename = filename
+        pipe.total_size = size
+        pipe.sender_name = sender_name
+
+    pipe.sender_connected.set()
+    logger.info(f"RelayPipe [{task_id}]: Sender '{sender_name}' verbunden. Warte auf Empfänger...")
+
+    # Wait for receiver to connect (up to 120s)
+    try:
+        await asyncio.wait_for(pipe.receiver_connected.wait(), timeout=120.0)
+    except asyncio.TimeoutError:
+        pipe.aborted = True
+        active_pipes.pop(task_id, None)
+        logger.warning(f"RelayPipe [{task_id}]: Timeout beim Warten auf Empfänger.")
+        raise HTTPException(status_code=408, detail="Zeitüberschreitung: Empfänger hat sich nicht rechtzeitig verbunden.")
+
+    logger.info(f"RelayPipe [{task_id}]: Empfänger verbunden! Beginne synchrones Streaming...")
+
+    try:
+        async for chunk in request.stream():
+            if pipe.aborted:
+                raise HTTPException(status_code=499, detail=pipe.error or "Empfänger hat Verbindung getrennt.")
+            
+            # Put chunk in memory queue (blocks if queue is full = TCP backpressure)
+            while not pipe.aborted:
+                try:
+                    await asyncio.wait_for(pipe.queue.put(chunk), timeout=1.0)
+                    break
+                except asyncio.TimeoutError:
+                    continue
+
+            if pipe.aborted:
+                raise HTTPException(status_code=499, detail=pipe.error or "Empfänger hat Verbindung getrennt.")
+
+        # Stream complete: send EOF sentinel
+        await pipe.queue.put(None)
+        logger.info(f"RelayPipe [{task_id}]: Alle Chunks vom Sender gestreamt. Warte auf Empfangsbestätigung...")
+
+        # Wait for receiver to finish reading the queue (up to 30s)
+        try:
+            await asyncio.wait_for(pipe.receiver_finished.wait(), timeout=30.0)
+        except asyncio.TimeoutError:
+            pass
+
+        return {"status": "completed", "task_id": task_id}
+    except Exception as e:
+        pipe.aborted = True
+        pipe.error = str(e)
+        try:
+            pipe.queue.put_nowait(None)
+        except Exception:
+            pass
+        logger.error(f"RelayPipe [{task_id}] Upload-Fehler: {e}")
+        raise HTTPException(status_code=500, detail=f"Übertragungsfehler beim Upload: {e}")
+    finally:
+        active_pipes.pop(task_id, None)
+
+
+@router.get("/relay/pipe/{task_id}/download")
+async def relay_pipe_download(task_id: str):
+    """
+    Zero-disk in-memory streaming download.
+    Streams chunks directly from memory queue without saving anything to server disk.
+    """
+    pipe = active_pipes.get(task_id)
+    if not pipe:
+        pipe = RelayPipe(task_id=task_id)
+        active_pipes[task_id] = pipe
+
+    pipe.receiver_connected.set()
+    logger.info(f"RelayPipe [{task_id}]: Empfänger verbunden. Warte auf Sender...")
+
+    # Wait for sender to connect (up to 120s)
+    try:
+        await asyncio.wait_for(pipe.sender_connected.wait(), timeout=120.0)
+    except asyncio.TimeoutError:
+        pipe.aborted = True
+        active_pipes.pop(task_id, None)
+        logger.warning(f"RelayPipe [{task_id}]: Timeout beim Warten auf Sender.")
+        raise HTTPException(status_code=408, detail="Zeitüberschreitung: Sender hat sich nicht verbunden.")
+
+    logger.info(f"RelayPipe [{task_id}]: Sender und Empfänger aktiv. Starte Live-Streaming-Download ({pipe.filename}, {pipe.total_size} Bytes)...")
+
+    async def stream_generator():
+        try:
+            while True:
+                if pipe.aborted:
+                    break
+                chunk = await pipe.queue.get()
+                if chunk is None:
+                    # EOF sentinel
+                    pipe.receiver_finished.set()
+                    break
+                yield chunk
+        except Exception as err:
+            pipe.aborted = True
+            pipe.error = str(err)
+            logger.error(f"RelayPipe [{task_id}] Download Stream-Fehler: {err}")
+            raise
+        finally:
+            pipe.receiver_finished.set()
+            pipe.aborted = True
+            active_pipes.pop(task_id, None)
+
+    headers = {
+        "Content-Disposition": f'attachment; filename="{pipe.filename}"',
+    }
+    if pipe.total_size > 0:
+        headers["Content-Length"] = str(pipe.total_size)
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="application/octet-stream",
+        headers=headers
+    )
+
+
+@router.get("/relay/pipe/{task_id}/info")
+def relay_pipe_info(task_id: str):
+    pipe = active_pipes.get(task_id)
+    if not pipe:
+        raise HTTPException(status_code=404, detail="Relay-Pipe nicht gefunden.")
+    return {
+        "task_id": pipe.task_id,
+        "filename": pipe.filename,
+        "size": pipe.total_size,
+        "sender_name": pipe.sender_name,
+        "sender_connected": pipe.sender_connected.is_set(),
+        "receiver_connected": pipe.receiver_connected.is_set(),
+    }
+
+
+# --- Legacy Fallback Relay Endpoints (for backwards compatibility) ---
 
 @router.post("/relay/upload/{task_id}")
 async def relay_upload(
@@ -107,7 +276,7 @@ async def relay_upload(
     size: int = Query(0),
     sender_name: str = Query("Gerät")
 ):
-    """Stores a file chunk/stream on the server relay for the receiver to pick up."""
+    """Legacy endpoint: Stores a file chunk/stream on disk."""
     temp_file = os.path.join(RELAY_DIR, f"{task_id}.uploading")
     final_file = os.path.join(RELAY_DIR, f"{task_id}.bin")
     
@@ -177,5 +346,7 @@ def relay_cleanup(task_id: str):
             except Exception:
                 pass
     relay_meta.pop(task_id, None)
+    active_pipes.pop(task_id, None)
     return {"status": "deleted"}
+
 
