@@ -108,7 +108,8 @@ jobs:
         working-directory: ./client
         run: |
           flutter create . --platforms=android --org com.crossdrop
-          cp ../build_scripts/android/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
+          chmod +x ../build_scripts/android/patch_android.sh
+          ../build_scripts/android/patch_android.sh
 
       - name: Install Dependencies
         working-directory: ./client
