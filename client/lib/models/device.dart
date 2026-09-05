@@ -1,4 +1,4 @@
-﻿enum ConnectionMode { lan, vpn }
+enum ConnectionMode { lan, vpn }
 
 class DeviceModel {
   final String id;
@@ -55,4 +55,12 @@ class DeviceModel {
     }
     return vpnIps.isNotEmpty ? vpnIps.first : null;
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is DeviceModel && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }

@@ -273,6 +273,33 @@ class AppState extends ChangeNotifier {
 
   Future<void> _handleTunnelData(Map<String, dynamic> data) async {
     final type = data['type'];
+    if (type == 'relay_finished') {
+      final taskId = data['task_id'];
+      final transfer = transfers.where((t) => t.id == taskId).firstOrNull;
+      if (transfer != null) {
+        transfer.status = TransferStatus.completed;
+        transfer.bytesTransferred = transfer.totalBytes;
+        transfer.speedBytesPerSecond = 0;
+        transfer.errorMessage = null;
+        notifyListeners();
+      }
+      return;
+    }
+
+    if (type == 'relay_receiver_progress') {
+      final taskId = data['task_id'];
+      final bytes = data['bytes'] as int? ?? 0;
+      final speed = (data['speed'] as num?)?.toDouble() ?? 0.0;
+      final transfer = transfers.where((t) => t.id == taskId).firstOrNull;
+      if (transfer != null && transfer.status == TransferStatus.running) {
+        transfer.bytesTransferred = (transfer.totalBytes * 0.50 + bytes * 0.50).round();
+        transfer.speedBytesPerSecond = speed;
+        transfer.errorMessage = 'Phase 2: Empfänger lädt Datei herunter...';
+        notifyListeners();
+      }
+      return;
+    }
+
     if (type == 'transfer_request') {
       final taskId = data['task_id'] ?? '';
       final filename = data['filename'] ?? 'Datei';
@@ -393,6 +420,17 @@ class AppState extends ChangeNotifier {
           lastCheckBytes = receivedBytes;
           lastTime = now;
           notifyListeners();
+
+          // Sync progress back to sender over tunnel
+          if (vpnTunnel.isConnected && item.peerDeviceId != null) {
+            vpnTunnel.sendThroughTunnel({
+              'type': 'relay_receiver_progress',
+              'task_id': taskId,
+              'bytes': receivedBytes,
+              'speed': item.speedBytesPerSecond,
+              'target_device_id': item.peerDeviceId,
+            });
+          }
         }
       }
 
@@ -406,6 +444,15 @@ class AppState extends ChangeNotifier {
 
       // Clean up temp file on server
       await api.deleteRelayFile(taskId);
+
+      // Notify sender that download is 100% complete!
+      if (vpnTunnel.isConnected && item.peerDeviceId != null) {
+        vpnTunnel.sendThroughTunnel({
+          'type': 'relay_finished',
+          'task_id': taskId,
+          'target_device_id': item.peerDeviceId,
+        });
+      }
     } catch (e) {
       await sink.close();
       item.status = TransferStatus.failed;
@@ -427,6 +474,11 @@ class AppState extends ChangeNotifier {
 
     final modeString = mode == ConnectionMode.vpn ? 'VPN' : 'LAN';
 
+    final candidateIps = <String>[
+      if (mode == ConnectionMode.lan) ...targetDevice.localIps,
+      if (targetDevice.vpnIps.isNotEmpty) ...targetDevice.vpnIps,
+    ];
+
     try {
       await TransferClient.sendFile(
         file: file,
@@ -435,6 +487,7 @@ class AppState extends ChangeNotifier {
         targetDeviceName: targetDevice.name,
         senderDeviceName: deviceName,
         connectionMode: modeString,
+        candidateIps: candidateIps,
         targetDeviceId: targetDevice.id,
         senderDeviceId: storage.deviceId,
         serverUrl: storage.serverUrl,

@@ -10,8 +10,8 @@ import 'vpn_tunnel_service.dart';
 typedef TransferClientProgressCallback = void Function(TransferItem item);
 
 class TransferClient {
-  // High-performance chunk buffer: 512 KB (maximizes LAN & Relay throughput)
-  static const int _chunkSize = 512 * 1024;
+  // High-performance chunk buffer: 64 KB (ensures smooth, real-time TCP flow control)
+  static const int _chunkSize = 64 * 1024;
 
   static Future<void> sendFile({
     required File file,
@@ -20,6 +20,7 @@ class TransferClient {
     required String targetDeviceName,
     required String senderDeviceName,
     required String connectionMode,
+    List<String> candidateIps = const [],
     String? targetDeviceId,
     String? senderDeviceId,
     String? serverUrl,
@@ -69,22 +70,33 @@ class TransferClient {
       }
     }
 
-    // Try Direct LAN First
+    // Try Direct LAN across all candidate IPs
     bool lanConnected = false;
-    try {
-      final pingUri = Uri.parse('http://$targetIp:$targetPort/api/ping');
-      final pingRes = await http.get(pingUri).timeout(const Duration(milliseconds: 2500));
-      if (pingRes.statusCode == 200) {
-        lanConnected = true;
-      }
-    } catch (_) {
-      lanConnected = false;
+    String activeTargetIp = targetIp;
+
+    final ipsToTest = <String>[
+      if (!targetIp.startsWith('10.42.0.') && !targetIp.startsWith('127.')) targetIp,
+      ...candidateIps.where((ip) => !ip.startsWith('10.42.0.') && !ip.startsWith('127.') && ip != targetIp),
+    ];
+
+    for (final testIp in ipsToTest) {
+      try {
+        final pingUri = Uri.parse('http://$testIp:$targetPort/api/ping');
+        final pingRes = await http.get(pingUri).timeout(const Duration(milliseconds: 1500));
+        if (pingRes.statusCode == 200) {
+          lanConnected = true;
+          activeTargetIp = testIp;
+          item.peerIp = testIp;
+          item.mode = 'LAN';
+          break;
+        }
+      } catch (_) {}
     }
 
     if (lanConnected) {
       try {
         // 1. Direct LAN Handshake
-        final handshakeUri = Uri.parse('http://$targetIp:$targetPort/api/transfer/request');
+        final handshakeUri = Uri.parse('http://$activeTargetIp:$targetPort/api/transfer/request');
         final handshakeResponse = await http
             .post(
               handshakeUri,
@@ -94,17 +106,17 @@ class TransferClient {
                 'filename': filename,
                 'size': fileSize,
                 'sender_name': senderDeviceName,
-                'mode': connectionMode,
+                'mode': 'LAN',
               }),
             )
             .timeout(const Duration(seconds: 45));
 
         if (handshakeResponse.statusCode == 200) {
-          // Direct P2P stream upload
+          // Direct P2P stream upload with real-time synchronous socket flushing
           await _streamDirectToPeer(
             file: file,
             taskId: taskId,
-            targetIp: targetIp,
+            targetIp: activeTargetIp,
             targetPort: targetPort,
             fileSize: fileSize,
             item: item,
@@ -184,8 +196,10 @@ class TransferClient {
           if (chunk.isEmpty) break;
 
           request.add(chunk);
+          await request.flush();
           sentBytes += chunk.length;
-          item.bytesTransferred = sentBytes;
+          // Hold sender progress at max 98% until receiver confirms complete write
+          item.bytesTransferred = (sentBytes >= fileSize) ? (fileSize * 0.98).round() : sentBytes;
 
           final now = DateTime.now();
           final ms = now.difference(lastTime).inMilliseconds;
@@ -204,6 +218,10 @@ class TransferClient {
         await raf.close();
       }
 
+      item.bytesTransferred = (fileSize * 0.98).round();
+      item.errorMessage = 'Empfänger schließt Speicherung ab...';
+      onProgress(item);
+
       final response = await request.close();
       final responseBody = await response.transform(utf8.decoder).join();
       client.close();
@@ -212,6 +230,7 @@ class TransferClient {
         item.status = TransferStatus.completed;
         item.bytesTransferred = fileSize;
         item.speedBytesPerSecond = 0;
+        item.errorMessage = null;
         onProgress(item);
       } else {
         item.status = TransferStatus.failed;
@@ -243,6 +262,7 @@ class TransferClient {
     final fileSize = await file.length();
 
     item.status = TransferStatus.running;
+    item.errorMessage = 'Phase 1: Wird an Server-Relay übertragen...';
     onProgress(item);
 
     // 1. Notify receiver over WebSocket tunnel
@@ -292,8 +312,11 @@ class TransferClient {
           if (chunk.isEmpty) break;
 
           request.add(chunk);
+          await request.flush();
           sentBytes += chunk.length;
-          item.bytesTransferred = sentBytes;
+          // Scale Phase 1 (server upload) to 0-50%
+          item.bytesTransferred = (sentBytes * 0.50).round();
+          item.errorMessage = 'Phase 1: Wird an Server-Relay übertragen...';
 
           final now = DateTime.now();
           final ms = now.difference(lastTime).inMilliseconds;
@@ -317,8 +340,10 @@ class TransferClient {
       client.close();
 
       if (response.statusCode == 200) {
-        item.status = TransferStatus.completed;
-        item.bytesTransferred = fileSize;
+        // Stage 1 (Server Upload) done! Stage 2 (Receiver download) begins!
+        item.status = TransferStatus.running;
+        item.bytesTransferred = (fileSize * 0.50).round();
+        item.errorMessage = 'Phase 2: Empfänger lädt Datei herunter...';
         item.speedBytesPerSecond = 0;
         onProgress(item);
 
@@ -328,6 +353,7 @@ class TransferClient {
             'type': 'relay_ready',
             'task_id': taskId,
             'target_device_id': targetDeviceId,
+            'sender_device_id': senderDeviceId,
           });
         }
       } else {

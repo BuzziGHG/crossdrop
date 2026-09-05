@@ -89,8 +89,13 @@ class _SendFileScreenState extends State<SendFileScreen> {
     final theme = Theme.of(context);
     final state = context.watch<AppState>();
 
-    // If preselected was not available in devices, choose first
-    if (_selectedDevice == null && state.devices.isNotEmpty) {
+    // Ensure preselected device is preserved or matched from current device list
+    if (widget.preselectedDevice != null) {
+      _selectedDevice = state.devices.firstWhere(
+        (d) => d.id == widget.preselectedDevice!.id,
+        orElse: () => widget.preselectedDevice!,
+      );
+    } else if (_selectedDevice == null && state.devices.isNotEmpty) {
       _selectedDevice = state.devices.first;
     }
 
@@ -235,6 +240,38 @@ class _SendFileScreenState extends State<SendFileScreen> {
                         ),
                       ],
                     ),
+                    if (activeItem.errorMessage != null && activeItem.status == TransferStatus.running) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primaryContainer.withOpacity(0.4),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: theme.colorScheme.primary.withOpacity(0.2)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: theme.colorScheme.primary),
+                            ),
+                            const SizedBox(width: 10),
+                            Flexible(
+                              child: Text(
+                                activeItem.errorMessage!,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: theme.colorScheme.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 24),
 
                     // Action Button
@@ -361,15 +398,66 @@ class _SendFileScreenState extends State<SendFileScreen> {
             ),
             const SizedBox(height: 24),
 
-            // 2. Target Device Picker
+            // 2. Target Device (Confirmed card if preselected, or dropdown if opened generic)
             Text(
-              'Zielgerät auswählen',
+              'Zielgerät',
               style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
-            if (state.devices.isEmpty)
+            if (widget.preselectedDevice != null && _selectedDevice != null) ...[
+              Card(
+                elevation: 1,
+                color: theme.colorScheme.primaryContainer.withOpacity(0.35),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.4)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.check, size: 18, color: Colors.white),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _selectedDevice!.name,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
+                            Text(
+                              '${_selectedDevice!.platform.toUpperCase()} • Bereit zur Übertragung',
+                              style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Text(
+                          'Ausgewählt',
+                          style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ] else if (state.devices.isEmpty) ...[
               const Text('Keine anderen registrierten Geräte vorhanden.')
-            else
+            ] else ...[
               DropdownButtonFormField<DeviceModel>(
                 value: _selectedDevice,
                 decoration: const InputDecoration(
@@ -398,6 +486,7 @@ class _SendFileScreenState extends State<SendFileScreen> {
                   });
                 },
               ),
+            ],
             const SizedBox(height: 24),
 
             // 3. Connection Mode Selector (LAN vs VPN)

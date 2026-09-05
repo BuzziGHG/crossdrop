@@ -1,6 +1,6 @@
 class AppConstants {
   static const String appName = 'CrossDrop';
-  static const String appVersion = '1.0.4';
+  static const String appVersion = '1.0.5';
 
   // Default network port for direct peer-to-peer file transfer
   static const int defaultTransferPort = 52520;
