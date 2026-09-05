@@ -1,4 +1,4 @@
-﻿name: Build & Release CrossDrop (.exe, .deb, .apk)
+name: Build & Release CrossDrop (.exe, .deb, .apk)
 
 on:
   push:
@@ -108,8 +108,7 @@ jobs:
         working-directory: ./client
         run: |
           flutter create . --platforms=android --org com.crossdrop
-          sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET"/>\n<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n<uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>\n<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>\n<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>' android/app/src/main/AndroidManifest.xml
-          sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
+          cp ../build_scripts/android/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
 
       - name: Install Dependencies
         working-directory: ./client

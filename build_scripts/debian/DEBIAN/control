@@ -1,10 +1,9 @@
-﻿Package: crossdrop
+Package: crossdrop
 Version: 1.0.0
 Section: net
 Priority: optional
 Architecture: amd64
 Maintainer: CrossDrop <support@crossdrop.local>
-Depends: libgtk-3-0 (>= 3.24.0), libx11-6, libblkid1, liblzma5
+Depends: libgtk-3-0, libx11-6, libblkid1, liblzma5
 Description: CrossDrop LAN and VPN File Transfer
- Sichere und extrem schnelle Datei- und Datenübertragung zwischen
- Windows, Linux und Android über Lokales Netzwerk (LAN) oder VPN.
+ Sichere Dateiuebertragung ueber LAN und VPN.
