@@ -1,7 +1,7 @@
 name: crossdrop
 description: "Cross-Platform LAN and VPN Data Transfer App for Windows, Linux, and Android"
 publish_to: 'none'
-version: 1.0.1+2
+version: 1.0.2+3
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

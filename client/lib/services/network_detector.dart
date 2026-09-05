@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 
 class NetworkDetector {
   /// Scans all local network interfaces and categorizes them into LAN and VPN IPs.
@@ -28,6 +28,15 @@ class NetworkDetector {
           final ip = addr.address;
           // Ignore localhost / link-local addresses
           if (ip.startsWith('127.') || ip.startsWith('169.254.')) {
+            continue;
+          }
+          // Ignore Android CGNAT default gateway (192.0.0.x - used by USB tethering driver)
+          if (ip.startsWith('192.0.0.')) {
+            continue;
+          }
+          // Ignore mobile data interfaces (rmnet0, rmnet_data, ccmni, etc.)
+          if (name.contains('rmnet') || name.contains('ccmni') ||
+              name.contains('seth_lte') || name.contains('v4-rmnet')) {
             continue;
           }
 

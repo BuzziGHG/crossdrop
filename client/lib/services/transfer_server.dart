@@ -110,7 +110,12 @@ class TransferServer {
 
       bool accept = _storage.autoAccept;
       if (!accept && onRequest != null) {
-        accept = await onRequest!(item);
+        try {
+          accept = await onRequest!(item)
+              .timeout(const Duration(seconds: 55));
+        } on TimeoutException {
+          accept = false; // auto-reject if user doesn't respond in time
+        }
       }
 
       if (accept) {

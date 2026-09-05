@@ -56,7 +56,7 @@ class TransferClient {
               'mode': connectionMode,
             }),
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 60));
 
       if (handshakeResponse.statusCode != 200) {
         item.status = TransferStatus.rejected;
@@ -72,8 +72,8 @@ class TransferClient {
       final uploadUri = Uri.parse('http://$targetIp:$targetPort/api/transfer/upload/$taskId');
 
       final client = HttpClient();
-      client.idleTimeout = const Duration(seconds: 60);
-      client.connectionTimeout = const Duration(seconds: 15);
+      client.idleTimeout = const Duration(seconds: 120);
+      client.connectionTimeout = const Duration(seconds: 30);
 
       final request = await client.postUrl(uploadUri);
       request.headers.set(HttpHeaders.contentTypeHeader, 'application/octet-stream');
@@ -127,6 +127,12 @@ class TransferClient {
         item.errorMessage = 'Fehler beim Übertragen (HTTP ${response.statusCode}): $responseBody';
         onProgress(item);
       }
+    } on TimeoutException {
+      item.status = TransferStatus.failed;
+      item.errorMessage =
+          'Verbindungs-Timeout: Zielgerät nicht erreichbar oder Transfer nicht angenommen (60 s).\n'
+          'Bitte prüfe: Sind beide Geräte im selben WLAN? Ist CrossDrop auf dem Zielgerät geöffnet?';
+      onProgress(item);
     } catch (e) {
       item.status = TransferStatus.failed;
       item.errorMessage = 'Verbindungsfehler: $e';
