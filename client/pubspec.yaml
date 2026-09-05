@@ -1,4 +1,4 @@
-﻿name: crossdrop
+name: crossdrop
 description: "Cross-Platform LAN and VPN Data Transfer App for Windows, Linux, and Android"
 publish_to: 'none'
 version: 1.0.0+1
@@ -12,7 +12,7 @@ dependencies:
   http: ^1.2.1
   provider: ^6.1.2
   shared_preferences: ^2.2.3
-  file_picker: ^8.0.0
+  file_picker: ^10.3.3
   path_provider: ^2.1.2
   open_filex: ^4.4.0
   device_info_plus: ^10.1.0

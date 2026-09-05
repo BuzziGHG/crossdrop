@@ -119,11 +119,20 @@ jobs:
         run: |
           flutter pub get
           PUB_DIR="${PUB_CACHE:-$HOME/.pub-cache}"
-          echo "Aligning pub packages to Android compileSdk 36 in $PUB_DIR..."
-          find "$PUB_DIR" -name "build.gradle" -exec sed -i 's/compileSdkVersion [0-9][0-9]*/compileSdkVersion 36/g' {} +
-          find "$PUB_DIR" -name "build.gradle" -exec sed -i 's/compileSdk = [0-9][0-9]*/compileSdk = 36/g' {} +
-          find "$PUB_DIR" -name "build.gradle.kts" -exec sed -i 's/compileSdk = [0-9][0-9]*/compileSdk = 36/g' {} +
-          find "$PUB_DIR" -name "build.gradle.kts" -exec sed -i 's/compileSdkVersion([0-9][0-9]*)/compileSdkVersion(36)/g' {} +
+          echo "Making pub cache writable..."
+          chmod -R u+w "$PUB_DIR" || true
+          echo "Aligning pub packages and client build files to compileSdk 36..."
+          find "$PUB_DIR" ./android -type f \( -name "build.gradle" -o -name "build.gradle.kts" \) -exec sed -i \
+            -e 's/compileSdkVersion[[:space:]]*[0-9]*/compileSdkVersion 36/g' \
+            -e 's/compileSdkVersion[[:space:]]*flutter\.compileSdkVersion/compileSdkVersion 36/g' \
+            -e 's/compileSdk[[:space:]]*=[[:space:]]*[0-9]*/compileSdk = 36/g' \
+            -e 's/compileSdk[[:space:]]*=[[:space:]]*flutter\.compileSdkVersion/compileSdk = 36/g' \
+            -e 's/compileSdk[[:space:]]*[0-9]*/compileSdk 36/g' \
+            -e 's/compileSdkVersion([0-9]*)/compileSdkVersion(36)/g' \
+            -e 's/compileSdkVersion(flutter\.compileSdkVersion)/compileSdkVersion(36)/g' \
+            {} +
+          echo "=== Patched files verification ==="
+          grep -rn "compileSdk" "$PUB_DIR"/hosted/*/android/build.gradle* || true
 
       - name: Build APK Release
         working-directory: ./client
