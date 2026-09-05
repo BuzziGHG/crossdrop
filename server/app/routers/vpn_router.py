@@ -1,4 +1,4 @@
-﻿import json
+import json
 import logging
 from typing import Dict
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, Depends, HTTPException
@@ -80,7 +80,7 @@ async def vpn_tunnel_endpoint(
     try:
         while True:
             raw_data = await websocket.receive_text()
-            data = jsonDecode(raw_data) if hasattr(raw_data, 'startswith') else json.loads(raw_data)
+            data = json.loads(raw_data)
             
             target_device_id = data.get("target_device_id")
             target_ip = data.get("target_ip")
