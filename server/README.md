@@ -1,4 +1,4 @@
-﻿# CrossDrop Server: Self-Hosted Account & Geräte-Server
+# CrossDrop Server: Self-Hosted Account & Geräte-Server
 
 Dieser Server verwaltet Benutzerkonten, registrierte Geräte, Online-Status (Heartbeats) und tauscht Netzwerk-Endpunkte (lokale IP-Adressen und VPN-IP-Adressen) zwischen Ihren Geräten aus.
 
@@ -52,11 +52,11 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        # WebSocket & Streaming Support
+        # WebSocket & Streaming Support (Zero-Disk Pipe)
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
-        client_max_body_size 500M;
+        client_max_body_size 0; # Kein Dateigrößenlimit
     }
 }
 ```
