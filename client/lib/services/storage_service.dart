@@ -1,4 +1,4 @@
-﻿import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../config/constants.dart';
 
@@ -14,7 +14,7 @@ class StorageService {
 
   // Server URL
   String get serverUrl =>
-      _prefs.getString(AppConstants.keyServerUrl) ?? 'http://127.0.0.1:2603';
+      _prefs.getString(AppConstants.keyServerUrl) ?? 'http://82.29.5.240:2603';
   Future<void> setServerUrl(String url) =>
       _prefs.setString(AppConstants.keyServerUrl, url.trim().replaceAll(RegExp(r'/+$'), ''));
 

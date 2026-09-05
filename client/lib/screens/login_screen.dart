@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/app_state.dart';
 
@@ -132,8 +132,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextField(
                       controller: _serverUrlController,
                       decoration: const InputDecoration(
-                        labelText: 'Server-URL (Ihr Linux Server)',
-                        hintText: 'http://192.168.1.100:2603 oder https://...',
+                        labelText: 'Server-URL',
+                        hintText: 'http://82.29.5.240:2603',
                         prefixIcon: Icon(Icons.dns_outlined),
                         border: OutlineInputBorder(),
                       ),

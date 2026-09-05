@@ -1,4 +1,4 @@
-﻿# CrossDrop: Vollständige Anleitung & System-Dokumentation
+# CrossDrop: Vollständige Anleitung & System-Dokumentation
 
 CrossDrop ist ein plattformübergreifendes System zur sicheren und extrem schnellen Datei- und Datenübertragung zwischen Windows, Linux und Android mit eigenem Benutzer-Account-System.
 
@@ -43,7 +43,7 @@ docker compose up -d --build
 
 **Fertig!**
 - Die Datenbank (SQLite) wird persistent im Ordner `./data/crossdrop.db` abgelegt.
-- Der Server hört standardmäßig auf Port `8000`.
+- Der Server hört standardmäßig auf Port `2603` (z. B. `http://82.29.5.240:2603`).
 - Unter `http://<SERVER-IP>:2603/docs` können Sie die interaktive Swagger-API-Dokumentation aufrufen und testen.
 
 ### Schritt 3: Optional mit Domain & SSL (HTTPS) absichern
