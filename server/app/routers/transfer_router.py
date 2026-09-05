@@ -108,59 +108,74 @@ async def relay_upload(
     sender_name: str = Query("Gerät")
 ):
     """Stores a file chunk/stream on the server relay for the receiver to pick up."""
-    task_file = os.path.join(RELAY_DIR, f"{task_id}.bin")
+    temp_file = os.path.join(RELAY_DIR, f"{task_id}.uploading")
+    final_file = os.path.join(RELAY_DIR, f"{task_id}.bin")
     
-    with open(task_file, "wb") as f:
-        async for chunk in request.stream():
-            f.write(chunk)
+    try:
+        with open(temp_file, "wb") as f:
+            async for chunk in request.stream():
+                f.write(chunk)
 
-    actual_size = os.path.getsize(task_file)
-    relay_meta[task_id] = {
-        "filename": filename,
-        "size": actual_size,
-        "sender_name": sender_name,
-        "created_at": datetime.utcnow().isoformat()
-    }
+        if os.path.exists(temp_file):
+            os.replace(temp_file, final_file)
+            actual_size = os.path.getsize(final_file)
+            relay_meta[task_id] = {
+                "status": "ready",
+                "filename": filename,
+                "size": actual_size,
+                "sender_name": sender_name,
+                "created_at": datetime.utcnow().isoformat()
+            }
 
-    return {
-        "status": "ready",
-        "task_id": task_id,
-        "filename": filename,
-        "size": actual_size,
-        "download_url": f"/api/transfer/relay/download/{task_id}"
-    }
+            return {
+                "status": "ready",
+                "task_id": task_id,
+                "filename": filename,
+                "size": actual_size,
+                "download_url": f"/api/transfer/relay/download/{task_id}"
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Upload konnte nicht fertiggestellt werden.")
+    except Exception as e:
+        if os.path.exists(temp_file):
+            try:
+                os.remove(temp_file)
+            except Exception:
+                pass
+        raise HTTPException(status_code=500, detail=f"Fehler beim Server-Relay-Upload: {e}")
 
 @router.get("/relay/info/{task_id}")
 def relay_info(task_id: str):
     info = relay_meta.get(task_id)
-    task_file = os.path.join(RELAY_DIR, f"{task_id}.bin")
-    if not os.path.exists(task_file):
-        raise HTTPException(status_code=404, detail="Übertragungsdatei auf dem Server nicht gefunden.")
-    return info or {"filename": "download.bin", "size": os.path.getsize(task_file)}
+    final_file = os.path.join(RELAY_DIR, f"{task_id}.bin")
+    if not info or info.get("status") != "ready" or not os.path.exists(final_file):
+        raise HTTPException(status_code=404, detail="Übertragungsdatei wird noch vom Sender hochgeladen...")
+    return info
 
 @router.get("/relay/download/{task_id}")
 def relay_download(task_id: str):
-    task_file = os.path.join(RELAY_DIR, f"{task_id}.bin")
-    if not os.path.exists(task_file):
-        raise HTTPException(status_code=404, detail="Übertragungsdatei existiert nicht oder wurde bereits abgeholt.")
+    info = relay_meta.get(task_id)
+    final_file = os.path.join(RELAY_DIR, f"{task_id}.bin")
+    if not info or info.get("status") != "ready" or not os.path.exists(final_file):
+        raise HTTPException(status_code=404, detail="Übertragungsdatei ist noch nicht bereit oder existiert nicht.")
     
-    info = relay_meta.get(task_id, {})
     filename = info.get("filename", "transfer.bin")
     
     return FileResponse(
-        path=task_file,
+        path=final_file,
         filename=filename,
         media_type="application/octet-stream"
     )
 
 @router.delete("/relay/{task_id}")
 def relay_cleanup(task_id: str):
-    task_file = os.path.join(RELAY_DIR, f"{task_id}.bin")
-    if os.path.exists(task_file):
-        try:
-            os.remove(task_file)
-        except Exception:
-            pass
+    for ext in [".bin", ".uploading"]:
+        fpath = os.path.join(RELAY_DIR, f"{task_id}{ext}")
+        if os.path.exists(fpath):
+            try:
+                os.remove(fpath)
+            except Exception:
+                pass
     relay_meta.pop(task_id, None)
     return {"status": "deleted"}
 

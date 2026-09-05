@@ -391,19 +391,28 @@ class AppState extends ChangeNotifier {
   }
 
   Future<void> _startRelayDownload(TransferItem item, String taskId) async {
-    item.status = TransferStatus.connecting;
-    notifyListeners();
+    item.status = TransferStatus.running;
+    item.bytesTransferred = 0;
+    item.errorMessage = 'Phase 1: Warte auf Bereitstellung durch Sender...';
+    _handleTransferProgress(item);
 
-    // 1. Wait until the file is ready on the server relay
+    // 1. Wait until the file is completely uploaded and ready on the server relay
     bool ready = false;
-    for (int i = 0; i < 90; i++) {
+    for (int i = 0; i < 300; i++) {
       try {
         final infoRes = await http.get(
           Uri.parse('${storage.serverUrl}/api/transfer/relay/info/$taskId'),
         ).timeout(const Duration(seconds: 4));
         if (infoRes.statusCode == 200) {
-          ready = true;
-          break;
+          final meta = jsonDecode(infoRes.body);
+          final serverSize = meta['size'] as int? ?? 0;
+          if (item.totalBytes <= 0 || serverSize >= item.totalBytes) {
+            if (item.totalBytes <= 0 && serverSize > 0) {
+              item.totalBytes = serverSize;
+            }
+            ready = true;
+            break;
+          }
         }
       } catch (_) {}
       await Future.delayed(const Duration(seconds: 1));
@@ -412,7 +421,7 @@ class AppState extends ChangeNotifier {
     if (!ready) {
       item.status = TransferStatus.failed;
       item.errorMessage = 'Zeitüberschreitung: Datei wurde vom Sender nicht bereitgestellt.';
-      notifyListeners();
+      _handleTransferProgress(item);
       return;
     }
 
@@ -449,7 +458,8 @@ class AppState extends ChangeNotifier {
     final client = HttpClient();
     try {
       item.status = TransferStatus.running;
-      notifyListeners();
+      item.errorMessage = 'Phase 2: Lade Datei herunter...';
+      _handleTransferProgress(item);
 
       final downloadUri = Uri.parse('${storage.serverUrl}/api/transfer/relay/download/$taskId');
       final request = await client.getUrl(downloadUri);
@@ -499,9 +509,17 @@ class AppState extends ChangeNotifier {
       await sink.flush();
       await sink.close();
 
+      if (item.totalBytes > 0 && receivedBytes < item.totalBytes) {
+        try {
+          if (await targetFile.exists()) await targetFile.delete();
+        } catch (_) {}
+        throw Exception('Unvollständiger Download: Nur $receivedBytes von ${item.totalBytes} Bytes empfangen.');
+      }
+
       item.status = TransferStatus.completed;
       item.bytesTransferred = item.totalBytes > 0 ? item.totalBytes : receivedBytes;
       item.speedBytesPerSecond = 0;
+      item.errorMessage = null;
       _handleTransferProgress(item);
 
       // Clean up temp file on server
@@ -516,7 +534,9 @@ class AppState extends ChangeNotifier {
         });
       }
     } catch (e) {
-      await sink.close();
+      try {
+        await sink.close();
+      } catch (_) {}
       item.status = TransferStatus.failed;
       item.errorMessage = 'Download-Fehler: $e';
       _handleTransferProgress(item);
