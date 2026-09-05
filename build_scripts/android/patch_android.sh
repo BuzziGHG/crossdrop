@@ -27,9 +27,9 @@ if [ -f app/build.gradle.kts ]; then
   sed -i 's/compileSdkVersion(flutter.compileSdkVersion)/compileSdkVersion(36)/g' app/build.gradle.kts
   cat << 'EOF' >> app/build.gradle.kts
 
-tasks.whenTaskAdded { task ->
-    if (task.name.contains("AarMetadata", ignoreCase = true)) {
-        task.enabled = false
+tasks.configureEach {
+    if (name.contains("AarMetadata", ignoreCase = true)) {
+        enabled = false
     }
 }
 EOF
@@ -42,9 +42,9 @@ if [ -f app/build.gradle ]; then
   sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/g' app/build.gradle
   cat << 'EOF' >> app/build.gradle
 
-tasks.whenTaskAdded { task ->
-    if (task.name.toLowerCase().contains("aarmetadata")) {
-        task.enabled = false
+tasks.configureEach {
+    if (name.toLowerCase().contains("aarmetadata")) {
+        enabled = false
     }
 }
 EOF
@@ -56,9 +56,9 @@ if [ -f build.gradle.kts ]; then
   cat << 'EOF' >> build.gradle.kts
 
 subprojects {
-    tasks.whenTaskAdded { task ->
-        if (task.name.contains("AarMetadata", ignoreCase = true)) {
-            task.enabled = false
+    tasks.configureEach {
+        if (name.contains("AarMetadata", ignoreCase = true)) {
+            enabled = false
         }
     }
 }
@@ -71,9 +71,9 @@ if [ -f build.gradle ]; then
   cat << 'EOF' >> build.gradle
 
 subprojects {
-    tasks.whenTaskAdded { task ->
-        if (task.name.toLowerCase().contains("aarmetadata")) {
-            task.enabled = false
+    tasks.configureEach {
+        if (name.toLowerCase().contains("aarmetadata")) {
+            enabled = false
         }
     }
 }
