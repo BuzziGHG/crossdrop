@@ -104,6 +104,9 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Setup Gradle Cache
+        uses: gradle/actions/setup-gradle@v4
+
       - name: Scaffold Android Platform Files
         working-directory: ./client
         run: |
