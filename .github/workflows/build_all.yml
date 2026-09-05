@@ -196,21 +196,31 @@ jobs:
           name: CrossDrop-Android-APK
           path: ./release-assets
 
+      - name: Determine Release Tag
+        id: release_version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="v$(grep '^version:' client/pubspec.yaml | head -n1 | cut -d' ' -f2 | cut -d'+' -f1)"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         with:
-          tag_name: v1.0.0
-          name: "CrossDrop v1.0.0 (Windows Setup .exe, Linux .deb, Android .apk)"
+          tag_name: ${{ steps.release_version.outputs.tag }}
+          name: "CrossDrop ${{ steps.release_version.outputs.tag }} (Windows Setup .exe, Linux .deb, Android .apk)"
           body: |
             ## Fertige Downloads für CrossDrop 🚀
             
             - 🪟 **Windows Setup-Installer (.exe):** `CrossDrop-Windows-Setup.exe` (Empfohlen: Installation mit Desktop- & Startmenü-Verknüpfung)
             - 🪟 **Windows Portable (.zip):** `CrossDrop-Windows-x64.zip` (Ohne Installation direkt starten)
-            - 🐧 **Linux (Debian/Ubuntu):** `crossdrop_1.0.0_amd64.deb` (`sudo dpkg -i crossdrop_1.0.0_amd64.deb`)
+            - 🐧 **Linux (Debian/Ubuntu):** `crossdrop_*.deb`
             - 📱 **Android:** `crossdrop-release.apk` (auf Android installieren)
           files: |
             ./release-assets/CrossDrop-Windows-Setup.exe
             ./release-assets/CrossDrop-Windows-x64.zip
-            ./release-assets/crossdrop_1.0.0_amd64.deb
+            ./release-assets/crossdrop*.deb
             ./release-assets/crossdrop-release.apk

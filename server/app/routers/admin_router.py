@@ -250,67 +250,122 @@ def admin_dashboard():
             <h4>🖥️ Windows Setup (10 & 11)</h4>
             <p>Installation mit Desktop-Icon & Startmenü</p>
           </div>
-          <a href="https://github.com/BuzziGHG/crossdrop/releases/download/v1.0.0/CrossDrop-Windows-Setup.exe" class="btn" target="_blank">Download Setup .exe</a>
+          <a href="/api/updates/download/windows" class="btn" target="_blank">Download Setup .exe</a>
         </div>
         <div class="download-item">
           <div class="download-info">
             <h4>🐧 Linux (Debian / Ubuntu)</h4>
             <p>Installierbares .deb Paket</p>
           </div>
-          <a href="https://github.com/BuzziGHG/crossdrop/releases/download/v1.0.0/crossdrop_1.0.0_amd64.deb" class="btn" target="_blank">Download .deb</a>
+          <a href="/api/updates/download/linux" class="btn" target="_blank">Download .deb</a>
         </div>
         <div class="download-item">
           <div class="download-info">
             <h4>📱 Android (Smartphone / Tablet)</h4>
             <p>Direkt installierbare APK</p>
           </div>
-          <a href="https://github.com/BuzziGHG/crossdrop/releases/download/v1.0.0/crossdrop-release.apk" class="btn" target="_blank">Download .apk</a>
+          <a href="/api/updates/download/android" class="btn" target="_blank">Download .apk</a>
         </div>
       </div>
+    </div>
+
     <!-- In-App Auto-Update Server Section -->
     <div class="card">
       <div class="card-header">
-        <div class="card-title">🔄 In-App Auto-Update Server</div>
+        <div class="card-title">🔄 In-App Auto-Update Server & Release-Center</div>
         <span class="badge badge-online">🟢 Auto-Update Dienst Aktiv</span>
       </div>
       <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
         Verwalten Sie App-Aktualisierungen direkt auf Ihrem Server. Verbundene Apps (Android, Windows, Linux) prüfen automatisch diese Schnittstelle und aktualisieren sich selbstständig, ohne dass Nutzer manuell APKs von GitHub herunterladen müssen.
       </p>
 
-      <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); border-radius: 12px; padding: 18px; margin-bottom: 20px;">
-        <h4 style="margin-bottom: 12px; font-size: 15px;">Aktuelle Server-Update-Versionen</h4>
+      <!-- GitHub Synchronisation Banner -->
+      <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+          <div>
+            <h4 style="font-size: 16px; margin-bottom: 6px; display: flex; align-items: center; gap: 8px;">
+              <span>🐙 GitHub Release Synchronisation</span>
+              <span class="badge badge-platform">BuzziGHG/crossdrop</span>
+            </h4>
+            <p style="color: var(--text-muted); font-size: 13px; max-width: 650px;">
+              Wenn Sie neuen Code auf GitHub pushen, baut GitHub Actions automatisch alle Apps (Windows .exe, Linux .deb, Android .apk). Mit einem Klick zieht der Server das neueste Release, speichert es dauerhaft im Archiv und gibt es für alle Apps frei.
+            </p>
+          </div>
+          <button class="btn" id="btn-sync-github" onclick="syncFromGitHub()" style="white-space: nowrap; background: linear-gradient(135deg, #2563eb, #3b82f6); padding: 11px 20px; font-size: 14px;">
+            🔄 Von GitHub synchronisieren & freigeben
+          </button>
+        </div>
+        <div id="sync-msg" style="margin-top: 14px; font-size: 13px; display: none;"></div>
+      </div>
+
+      <!-- Current Server Versions Summary -->
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--card-border); border-radius: 12px; padding: 18px; margin-bottom: 24px;">
+        <h4 style="margin-bottom: 12px; font-size: 15px;">Aktuell auf dem Server aktivierte Versionen</h4>
         <div style="display: flex; gap: 24px; flex-wrap: wrap;" id="update-versions-display">
+          <div><span style="color: var(--text-muted); font-size: 12px;">AKTIVE HAUPTVERSION:</span> <strong id="up-ver-latest" style="color: #60a5fa;">v1.0.0</strong></div>
           <div><span style="color: var(--text-muted); font-size: 12px;">ANDROID APK:</span> <strong id="up-ver-android">v1.0.0</strong></div>
           <div><span style="color: var(--text-muted); font-size: 12px;">WINDOWS:</span> <strong id="up-ver-windows">v1.0.0</strong></div>
           <div><span style="color: var(--text-muted); font-size: 12px;">LINUX .DEB:</span> <strong id="up-ver-linux">v1.0.0</strong></div>
         </div>
       </div>
 
-      <!-- Upload Form for new APK / binary directly from browser -->
-      <form id="upload-update-form" onsubmit="handleUpdateUpload(event)" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; align-items: end;">
-        <div>
-          <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">Plattform</label>
-          <select id="up-platform" style="width: 100%; padding: 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--card-border); color: #fff;">
-            <option value="android">📱 Android (.apk)</option>
-            <option value="windows">🖥️ Windows (.zip)</option>
-            <option value="linux">🐧 Linux (.deb)</option>
-          </select>
+      <!-- Versions-Historie & Rollback Table -->
+      <div style="margin-bottom: 28px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+          <h4 style="font-size: 16px; display: flex; align-items: center; gap: 8px;">
+            <span>📦 Versions-Historie & Rollback-Verwaltung</span>
+            <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">(Alle früheren Builds bleiben im Archiv gesichert)</span>
+          </h4>
+          <span style="font-size: 12px; color: var(--text-muted);">Falls ein Release Fehler enthält, genügt ein Klick auf Rollback.</span>
         </div>
-        <div>
-          <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">Neue Versionsnummer (z. B. 1.0.1)</label>
-          <input type="text" id="up-version" placeholder="1.0.1" required style="width: 100%; padding: 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--card-border); color: #fff;">
+        <div style="overflow-x: auto; border: 1px solid var(--card-border); border-radius: 12px;">
+          <table>
+            <thead>
+              <tr>
+                <th>Version</th>
+                <th>Bereitgestellt am</th>
+                <th>Hinweise / Release-Notizen</th>
+                <th>Plattformen</th>
+                <th>Status</th>
+                <th>Rollback-Aktion</th>
+              </tr>
+            </thead>
+            <tbody id="history-table-body">
+              <tr><td colspan="6" class="empty-state">Lade Versionshistorie...</td></tr>
+            </tbody>
+          </table>
         </div>
-        <div>
-          <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">Update-Datei auswählen</label>
-          <input type="file" id="up-file" required style="width: 100%; padding: 7px; border-radius: 8px; background: var(--bg); border: 1px solid var(--card-border); color: #fff;">
-        </div>
-        <div>
-          <button type="submit" class="btn" style="width: 100%; padding: 10px; justify-content: center;" id="btn-upload-update">
-            🚀 Update auf Server bereitstellen
-          </button>
-        </div>
-      </form>
-      <div id="upload-msg" style="margin-top: 12px; font-size: 13px; display: none;"></div>
+        <div id="rollback-msg" style="margin-top: 10px; font-size: 13px; display: none;"></div>
+      </div>
+
+      <!-- Manual Upload Form -->
+      <div style="border-top: 1px solid var(--card-border); padding-top: 20px;">
+        <h4 style="margin-bottom: 12px; font-size: 15px; color: var(--text-muted);">Manuelle Bereitstellung (Fallback ohne GitHub)</h4>
+        <form id="upload-update-form" onsubmit="handleUpdateUpload(event)" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; align-items: end;">
+          <div>
+            <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">Plattform</label>
+            <select id="up-platform" style="width: 100%; padding: 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--card-border); color: #fff;">
+              <option value="android">📱 Android (.apk)</option>
+              <option value="windows">🖥️ Windows (.exe Setup)</option>
+              <option value="linux">🐧 Linux (.deb)</option>
+            </select>
+          </div>
+          <div>
+            <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">Neue Versionsnummer (z. B. 1.0.1)</label>
+            <input type="text" id="up-version" placeholder="1.0.1" required style="width: 100%; padding: 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--card-border); color: #fff;">
+          </div>
+          <div>
+            <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px; font-weight: 600;">Update-Datei auswählen</label>
+            <input type="file" id="up-file" required style="width: 100%; padding: 7px; border-radius: 8px; background: var(--bg); border: 1px solid var(--card-border); color: #fff;">
+          </div>
+          <div>
+            <button type="submit" class="btn" style="width: 100%; padding: 10px; justify-content: center;" id="btn-upload-update">
+              🚀 Manuell auf Server speichern
+            </button>
+          </div>
+        </form>
+        <div id="upload-msg" style="margin-top: 12px; font-size: 13px; display: none;"></div>
+      </div>
     </div>
 
     <footer>
@@ -386,19 +441,127 @@ def admin_dashboard():
         const res = await fetch('/api/updates/status');
         if (!res.ok) return;
         const data = await res.json();
+        
+        const latestVer = data.latest_version || "1.0.0";
+        const latestEl = document.getElementById('up-ver-latest');
+        if (latestEl) latestEl.innerText = 'v' + latestVer;
+
         if (data.platforms) {
           if (data.platforms.android) {
-            document.getElementById('up-ver-android').innerText = 'v' + data.platforms.android.version + (data.platforms.android.has_local_file ? ' (Lokal bereit)' : ' (GitHub Fallback)');
+            const sizeMb = data.platforms.android.file_size ? ' (' + (data.platforms.android.file_size / (1024*1024)).toFixed(1) + ' MB)' : '';
+            document.getElementById('up-ver-android').innerText = 'v' + data.platforms.android.version + (data.platforms.android.has_local_file ? ' ✅ Server' + sizeMb : ' 🌐 GitHub Fallback');
           }
           if (data.platforms.windows) {
-            document.getElementById('up-ver-windows').innerText = 'v' + data.platforms.windows.version + (data.platforms.windows.has_local_file ? ' (Lokal bereit)' : ' (GitHub Fallback)');
+            const sizeMb = data.platforms.windows.file_size ? ' (' + (data.platforms.windows.file_size / (1024*1024)).toFixed(1) + ' MB)' : '';
+            document.getElementById('up-ver-windows').innerText = 'v' + data.platforms.windows.version + (data.platforms.windows.has_local_file ? ' ✅ Server' + sizeMb : ' 🌐 GitHub Fallback');
           }
           if (data.platforms.linux) {
-            document.getElementById('up-ver-linux').innerText = 'v' + data.platforms.linux.version + (data.platforms.linux.has_local_file ? ' (Lokal bereit)' : ' (GitHub Fallback)');
+            const sizeMb = data.platforms.linux.file_size ? ' (' + (data.platforms.linux.file_size / (1024*1024)).toFixed(1) + ' MB)' : '';
+            document.getElementById('up-ver-linux').innerText = 'v' + data.platforms.linux.version + (data.platforms.linux.has_local_file ? ' ✅ Server' + sizeMb : ' 🌐 GitHub Fallback');
+          }
+        }
+
+        // Render Version History & Rollback Table
+        const histBody = document.getElementById('history-table-body');
+        if (histBody) {
+          const history = data.history || [];
+          if (history.length === 0) {
+            histBody.innerHTML = '<tr><td colspan="6" class="empty-state">Noch keine Versionen in der Historie erfasst.</td></tr>';
+          } else {
+            histBody.innerHTML = history.map(h => {
+              const isActive = (h.version === latestVer);
+              const statusBadge = isActive 
+                ? '<span class="badge badge-online">🟢 Aktiv freigegeben</span>'
+                : '<span class="badge badge-offline">⚪ Im Archiv gesichert</span>';
+
+              const actionBtn = isActive
+                ? '<span style="color: #64748b; font-size: 13px; font-weight: 500;">✓ Derzeit aktiv</span>'
+                : `<button class="btn btn-outline" style="padding: 5px 12px; font-size: 12px; color: #f59e0b; border-color: rgba(245, 158, 11, 0.4);" onclick="rollbackToVersion('${escapeHtml(h.version)}')">↩️ Rollback auf v${escapeHtml(h.version)}</button>`;
+
+              const plats = (h.platforms || []).map(p => {
+                if (p === 'android') return '📱 Android';
+                if (p === 'windows') return '🖥️ Windows';
+                if (p === 'linux') return '🐧 Linux';
+                return p;
+              }).join(', ') || 'Alle Plattformen';
+
+              return `
+                <tr style="${isActive ? 'background: rgba(59, 130, 246, 0.05);' : ''}">
+                  <td><strong style="font-size: 15px; color: ${isActive ? '#60a5fa' : '#fff'};">v${escapeHtml(h.version)}</strong></td>
+                  <td style="color: var(--text-muted); font-size: 13px;">${escapeHtml(h.created_at || '—')}</td>
+                  <td style="font-size: 13px; max-width: 250px;">${escapeHtml(h.release_notes || '—')}</td>
+                  <td><span class="badge badge-platform">${escapeHtml(plats)}</span></td>
+                  <td>${statusBadge}</td>
+                  <td>${actionBtn}</td>
+                </tr>
+              `;
+            }).join('');
           }
         }
       } catch (e) {
         console.error("Error loading update status", e);
+      }
+    }
+
+    async function syncFromGitHub() {
+      const btn = document.getElementById('btn-sync-github');
+      const msg = document.getElementById('sync-msg');
+      btn.disabled = true;
+      btn.innerHTML = "⏳ Lade von GitHub herunter...";
+      msg.style.display = 'block';
+      msg.style.color = '#38bdf8';
+      msg.innerText = "Verbinde mit GitHub API, lade Windows Setup, Linux .deb und Android APK herunter...";
+
+      try {
+        const res = await fetch('/api/updates/sync-github', {
+          method: 'POST'
+        });
+        const result = await res.json();
+        if (res.ok) {
+          msg.style.color = '#34d399';
+          msg.innerText = "✅ " + result.message + " Plattformen: " + (result.synced_platforms || []).join(', ');
+          loadUpdateStatus();
+        } else {
+          msg.style.color = '#ef4444';
+          msg.innerText = "❌ Fehler beim Synchronisieren: " + (result.detail || "Unbekannter Fehler");
+        }
+      } catch (err) {
+        msg.style.color = '#ef4444';
+        msg.innerText = "❌ Netzwerkfehler: " + err.message;
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = "🔄 Von GitHub synchronisieren & freigeben";
+      }
+    }
+
+    async function rollbackToVersion(targetVer) {
+      if (!confirm("Möchten Sie wirklich auf Version v" + targetVer + " zurückrollen?\n\nDie archivierten Installationsdateien für diese Version werden sofort als aktiv gesetzt und verbundene Apps erhalten diesen Stand.")) {
+        return;
+      }
+
+      const msg = document.getElementById('rollback-msg');
+      msg.style.display = 'block';
+      msg.style.color = '#38bdf8';
+      msg.innerText = "Führe Rollback auf Version v" + targetVer + " durch...";
+
+      try {
+        const res = await fetch('/api/updates/rollback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ version: targetVer })
+        });
+        const result = await res.json();
+        if (res.ok) {
+          msg.style.color = '#34d399';
+          msg.innerText = "✅ " + result.message;
+          loadUpdateStatus();
+        } else {
+          msg.style.color = '#ef4444';
+          msg.innerText = "❌ Rollback fehlgeschlagen: " + (result.detail || "Unbekannter Fehler");
+        }
+      } catch (err) {
+        msg.style.color = '#ef4444';
+        msg.innerText = "❌ Netzwerkfehler beim Rollback: " + err.message;
       }
     }
 
