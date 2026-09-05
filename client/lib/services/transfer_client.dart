@@ -16,7 +16,7 @@ class TransferClient {
     required int targetPort,
     required String targetDeviceName,
     required String senderDeviceName,
-    required String connectionMode, // 'LAN' or 'VPN'
+    required String connectionMode,
     required TransferClientProgressCallback onProgress,
   }) async {
     final taskId = const Uuid().v4();
@@ -72,18 +72,13 @@ class TransferClient {
       request.contentLength = fileSize;
 
       final fileStream = file.openRead();
-      final outputDigestSink = AccumulatorSink<Digest>();
-      final hashInputSink = sha256.startChunkedConversion(outputDigestSink);
-
       int sentBytes = 0;
       int lastCheckBytes = 0;
       DateTime lastTime = DateTime.now();
 
-      // Background pipe to request body
       final pipeFuture = () async {
         await for (final chunk in fileStream) {
           request.sink.add(chunk);
-          hashInputSink.add(chunk);
           sentBytes += chunk.length;
           item.bytesTransferred = sentBytes;
 
@@ -97,7 +92,6 @@ class TransferClient {
             onProgress(item);
           }
         }
-        hashInputSink.close();
         await request.sink.close();
       }();
 

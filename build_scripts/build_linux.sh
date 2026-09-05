@@ -3,13 +3,14 @@ set -e
 
 echo "=== [CrossDrop] Baue Linux Release & Debian (.deb) Paket ==="
 
-cd "$(dirname "$0")/../client"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR/../client"
 
 echo "1. Fuehre Flutter Build fuer Linux aus..."
 flutter build linux --release
 
 echo "2. Erstelle Debian Paket-Struktur..."
-PKG_DIR="build/debian_package"
+PKG_DIR="$SCRIPT_DIR/debian_package"
 rm -rf "$PKG_DIR"
 mkdir -p "$PKG_DIR/DEBIAN"
 mkdir -p "$PKG_DIR/usr/lib/crossdrop"
@@ -17,7 +18,7 @@ mkdir -p "$PKG_DIR/usr/bin"
 mkdir -p "$PKG_DIR/usr/share/applications"
 
 # Copy DEBIAN control file
-cp linux/debian/DEBIAN/control "$PKG_DIR/DEBIAN/"
+cp "$SCRIPT_DIR/debian/DEBIAN/control" "$PKG_DIR/DEBIAN/"
 
 # Copy Flutter build bundle
 cp -r build/linux/x64/release/bundle/* "$PKG_DIR/usr/lib/crossdrop/"
@@ -30,10 +31,10 @@ EOF
 chmod +x "$PKG_DIR/usr/bin/crossdrop"
 
 # Copy Desktop entry
-cp linux/debian/usr/share/applications/crossdrop.desktop "$PKG_DIR/usr/share/applications/"
+cp "$SCRIPT_DIR/debian/usr/share/applications/crossdrop.desktop" "$PKG_DIR/usr/share/applications/"
 
 echo "3. Packe .deb Datei..."
-OUTPUT_DEB="../build_scripts/crossdrop_1.0.0_amd64.deb"
+OUTPUT_DEB="$SCRIPT_DIR/crossdrop_1.0.0_amd64.deb"
 dpkg-deb --build "$PKG_DIR" "$OUTPUT_DEB"
 
 echo "=== ERFOLG: Debian-Paket erstellt unter: $OUTPUT_DEB ==="

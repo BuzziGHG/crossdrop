@@ -40,14 +40,11 @@ class TransferServer {
       );
       _server!.listen(_handleRequest);
     } catch (e) {
-      // If port is occupied, try dynamic port fallback
       try {
         _server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
         _storage.setTransferPort(_server!.port);
         _server!.listen(_handleRequest);
-      } catch (e2) {
-        // failed to bind
-      }
+      } catch (_) {}
     }
   }
 
@@ -57,7 +54,6 @@ class TransferServer {
   }
 
   Future<void> _handleRequest(HttpRequest request) async {
-    // Add CORS headers
     request.response.headers.add('Access-Control-Allow-Origin', '*');
     request.response.headers.add('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     request.response.headers.add('Access-Control-Allow-Headers', '*');
@@ -144,14 +140,12 @@ class TransferServer {
       return;
     }
 
-    // Determine save path
     String downloadDir = _storage.downloadPath ?? '';
     if (downloadDir.isEmpty) {
       final dir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
       downloadDir = dir.path;
     }
 
-    // Ensure unique filename if collision
     String finalPath = p.join(downloadDir, item.filename);
     int counter = 1;
     final extension = p.extension(item.filename);
@@ -163,8 +157,6 @@ class TransferServer {
 
     final targetFile = File(finalPath);
     final sink = targetFile.openWrite();
-    final outputDigestSink = AccumulatorSink<Digest>();
-    final hashInputSink = sha256.startChunkedConversion(outputDigestSink);
 
     int receivedBytes = 0;
     int lastCheckBytes = 0;
@@ -173,7 +165,6 @@ class TransferServer {
     try {
       await for (final chunk in request) {
         sink.add(chunk);
-        hashInputSink.add(chunk);
         receivedBytes += chunk.length;
         item.bytesTransferred = receivedBytes;
 
@@ -188,27 +179,29 @@ class TransferServer {
         }
       }
 
-      hashInputSink.close();
       await sink.flush();
       await sink.close();
 
-      final calculatedHash = outputDigestSink.events.single.toString();
-      if (item.checksumSha256 != null &&
-          item.checksumSha256!.isNotEmpty &&
-          calculatedHash != item.checksumSha256) {
-        item.status = TransferStatus.failed;
-        item.errorMessage = 'Prüfsummen-Fehler (SHA-256 stimmt nicht überein)';
-        request.response.statusCode = HttpStatus.expectationFailed;
-        request.response.write(jsonEncode({'error': 'Checksum mismatch'}));
-      } else {
-        item.status = TransferStatus.completed;
-        item.bytesTransferred = receivedBytes;
-        item.speedBytesPerSecond = 0;
-        onProgress?.call(item);
-
-        request.response.statusCode = HttpStatus.ok;
-        request.response.write(jsonEncode({'status': 'completed', 'path': finalPath}));
+      // Verify SHA-256 if provided
+      if (item.checksumSha256 != null && item.checksumSha256!.isNotEmpty) {
+        final digest = await sha256.bind(targetFile.openRead()).first;
+        final calculatedHash = digest.toString();
+        if (calculatedHash != item.checksumSha256) {
+          item.status = TransferStatus.failed;
+          item.errorMessage = 'Prüfsummen-Fehler (SHA-256 stimmt nicht überein)';
+          request.response.statusCode = HttpStatus.expectationFailed;
+          request.response.write(jsonEncode({'error': 'Checksum mismatch'}));
+          return;
+        }
       }
+
+      item.status = TransferStatus.completed;
+      item.bytesTransferred = receivedBytes;
+      item.speedBytesPerSecond = 0;
+      onProgress?.call(item);
+
+      request.response.statusCode = HttpStatus.ok;
+      request.response.write(jsonEncode({'status': 'completed', 'path': finalPath}));
     } catch (e) {
       item.status = TransferStatus.failed;
       item.errorMessage = e.toString();

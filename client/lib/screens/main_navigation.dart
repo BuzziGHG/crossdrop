@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+﻿import '../models/transfer_item.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/app_state.dart';
 import 'device_list_screen.dart';

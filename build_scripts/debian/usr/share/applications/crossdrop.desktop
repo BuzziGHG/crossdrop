@@ -1,0 +1,9 @@
+﻿[Desktop Entry]
+Name=CrossDrop
+Comment=Sicherer Datentransfer über LAN & VPN
+Exec=crossdrop
+Terminal=false
+Type=Application
+Icon=crossdrop
+Categories=Network;FileTransfer;Utility;
+Keywords=Transfer;File;LAN;VPN;CrossDrop;Share;
