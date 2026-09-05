@@ -34,7 +34,9 @@ chmod +x "$PKG_DIR/usr/bin/crossdrop"
 cp "$SCRIPT_DIR/debian/usr/share/applications/crossdrop.desktop" "$PKG_DIR/usr/share/applications/"
 
 echo "3. Packe .deb Datei..."
-OUTPUT_DEB="$SCRIPT_DIR/crossdrop_1.0.0_amd64.deb"
+VER=$(grep '^version:' "$SCRIPT_DIR/../client/pubspec.yaml" | head -n1 | cut -d' ' -f2 | cut -d'+' -f1)
+sed -i "s/^Version:.*/Version: $VER/" "$PKG_DIR/DEBIAN/control"
+OUTPUT_DEB="$SCRIPT_DIR/crossdrop_${VER}_amd64.deb"
 dpkg-deb --build "$PKG_DIR" "$OUTPUT_DEB"
 
 echo "=== ERFOLG: Debian-Paket erstellt unter: $OUTPUT_DEB ==="

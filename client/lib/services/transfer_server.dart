@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
@@ -38,10 +38,12 @@ class TransferServer {
         _storage.transferPort,
         shared: true,
       );
+      _server!.autoUncompress = false;
       _server!.listen(_handleRequest);
     } catch (e) {
       try {
         _server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
+        _server!.autoUncompress = false;
         _storage.setTransferPort(_server!.port);
         _server!.listen(_handleRequest);
       } catch (_) {}
@@ -156,7 +158,8 @@ class TransferServer {
     }
 
     final targetFile = File(finalPath);
-    final sink = targetFile.openWrite();
+    final sink = targetFile.openWrite(mode: FileMode.write);
+    request.response.bufferOutput = false;
 
     int receivedBytes = 0;
     int lastCheckBytes = 0;
@@ -170,9 +173,12 @@ class TransferServer {
 
         final now = DateTime.now();
         final ms = now.difference(lastTime).inMilliseconds;
-        if (ms >= 500) {
+        if (ms >= 300) {
           final bytesDiff = receivedBytes - lastCheckBytes;
-          item.speedBytesPerSecond = (bytesDiff / (ms / 1000.0));
+          final currentSpeed = (bytesDiff / (ms / 1000.0));
+          item.speedBytesPerSecond = item.speedBytesPerSecond == 0
+              ? currentSpeed
+              : (item.speedBytesPerSecond * 0.4 + currentSpeed * 0.6);
           lastCheckBytes = receivedBytes;
           lastTime = now;
           onProgress?.call(item);

@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
@@ -10,6 +10,9 @@ import '../models/transfer_item.dart';
 typedef TransferClientProgressCallback = void Function(TransferItem item);
 
 class TransferClient {
+  // High-performance chunk buffer: 512 KB (maximizes LAN & VPN throughput)
+  static const int _chunkSize = 512 * 1024;
+
   static Future<void> sendFile({
     required File file,
     required String targetIp,
@@ -62,53 +65,66 @@ class TransferClient {
         return;
       }
 
-      // 2. Open Stream Upload to Target Device
+      // 2. High-Speed Direct Stream Upload using Native HttpClient
       item.status = TransferStatus.running;
       onProgress(item);
 
       final uploadUri = Uri.parse('http://$targetIp:$targetPort/api/transfer/upload/$taskId');
-      final request = http.StreamedRequest('POST', uploadUri);
-      request.headers['Content-Type'] = 'application/octet-stream';
-      request.contentLength = fileSize;
 
-      final fileStream = file.openRead();
+      final client = HttpClient();
+      client.idleTimeout = const Duration(seconds: 60);
+      client.connectionTimeout = const Duration(seconds: 15);
+
+      final request = await client.postUrl(uploadUri);
+      request.headers.set(HttpHeaders.contentTypeHeader, 'application/octet-stream');
+      request.contentLength = fileSize;
+      request.bufferOutput = false; // direct pipeline streaming to socket without intermediate buffering
+
       int sentBytes = 0;
       int lastCheckBytes = 0;
       DateTime lastTime = DateTime.now();
 
-      final pipeFuture = () async {
-        await for (final chunk in fileStream) {
-          request.sink.add(chunk);
+      final raf = await file.open(mode: FileMode.read);
+      try {
+        while (sentBytes < fileSize) {
+          final toRead = (fileSize - sentBytes) > _chunkSize ? _chunkSize : (fileSize - sentBytes);
+          final chunk = await raf.read(toRead);
+          if (chunk.isEmpty) break;
+
+          request.add(chunk);
           sentBytes += chunk.length;
           item.bytesTransferred = sentBytes;
 
           final now = DateTime.now();
           final ms = now.difference(lastTime).inMilliseconds;
-          if (ms >= 500) {
+          if (ms >= 300) {
             final bytesDiff = sentBytes - lastCheckBytes;
-            item.speedBytesPerSecond = (bytesDiff / (ms / 1000.0));
+            final currentSpeed = (bytesDiff / (ms / 1000.0));
+            // Rolling average for smooth speed display
+            item.speedBytesPerSecond = item.speedBytesPerSecond == 0
+                ? currentSpeed
+                : (item.speedBytesPerSecond * 0.4 + currentSpeed * 0.6);
             lastCheckBytes = sentBytes;
             lastTime = now;
             onProgress(item);
           }
         }
-        await request.sink.close();
-      }();
+      } finally {
+        await raf.close();
+      }
 
-      final responseFuture = request.send();
-      await Future.wait([pipeFuture, responseFuture]);
+      final response = await request.close();
+      final responseBody = await response.transform(utf8.decoder).join();
+      client.close();
 
-      final streamedResponse = await responseFuture;
-      final responseBody = await streamedResponse.stream.bytesToString();
-
-      if (streamedResponse.statusCode == 200) {
+      if (response.statusCode == 200) {
         item.status = TransferStatus.completed;
         item.bytesTransferred = fileSize;
         item.speedBytesPerSecond = 0;
         onProgress(item);
       } else {
         item.status = TransferStatus.failed;
-        item.errorMessage = 'Fehler beim Übertragen: $responseBody';
+        item.errorMessage = 'Fehler beim Übertragen (HTTP ${response.statusCode}): $responseBody';
         onProgress(item);
       }
     } catch (e) {
