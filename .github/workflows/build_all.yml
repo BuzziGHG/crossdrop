@@ -114,9 +114,16 @@ jobs:
           chmod +x ../build_scripts/android/patch_android.sh
           ../build_scripts/android/patch_android.sh
 
-      - name: Install Dependencies
+      - name: Install Dependencies & Align Plugin SDKs
         working-directory: ./client
-        run: flutter pub get
+        run: |
+          flutter pub get
+          PUB_DIR="${PUB_CACHE:-$HOME/.pub-cache}"
+          echo "Aligning pub packages to Android compileSdk 36 in $PUB_DIR..."
+          find "$PUB_DIR" -name "build.gradle" -exec sed -i 's/compileSdkVersion [0-9][0-9]*/compileSdkVersion 36/g' {} +
+          find "$PUB_DIR" -name "build.gradle" -exec sed -i 's/compileSdk = [0-9][0-9]*/compileSdk = 36/g' {} +
+          find "$PUB_DIR" -name "build.gradle.kts" -exec sed -i 's/compileSdk = [0-9][0-9]*/compileSdk = 36/g' {} +
+          find "$PUB_DIR" -name "build.gradle.kts" -exec sed -i 's/compileSdkVersion([0-9][0-9]*)/compileSdkVersion(36)/g' {} +
 
       - name: Build APK Release
         working-directory: ./client
