@@ -1,11 +1,11 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 set -e
 
 echo "=== [CrossDrop] Baue Linux Release & Debian (.deb) Paket ==="
 
 cd "$(dirname "$0")/../client"
 
-echo "1. Führe Flutter Build für Linux aus..."
+echo "1. Fuehre Flutter Build fuer Linux aus..."
 flutter build linux --release
 
 echo "2. Erstelle Debian Paket-Struktur..."
@@ -37,4 +37,3 @@ OUTPUT_DEB="../build_scripts/crossdrop_1.0.0_amd64.deb"
 dpkg-deb --build "$PKG_DIR" "$OUTPUT_DEB"
 
 echo "=== ERFOLG: Debian-Paket erstellt unter: $OUTPUT_DEB ==="
-echo "Installation auf Debian/Ubuntu: sudo dpkg -i crossdrop_1.0.0_amd64.deb"

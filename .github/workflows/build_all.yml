@@ -25,6 +25,10 @@ jobs:
       - name: Enable Windows Desktop
         run: flutter config --enable-windows-desktop
 
+      - name: Scaffold Windows Platform Files
+        working-directory: ./client
+        run: flutter create . --platforms=windows --org com.crossdrop
+
       - name: Install Dependencies
         working-directory: ./client
         run: flutter pub get
@@ -63,6 +67,10 @@ jobs:
       - name: Enable Linux Desktop
         run: flutter config --enable-linux-desktop
 
+      - name: Scaffold Linux Platform Files
+        working-directory: ./client
+        run: flutter create . --platforms=linux --org com.crossdrop
+
       - name: Install Dependencies
         working-directory: ./client
         run: flutter pub get
@@ -95,6 +103,13 @@ jobs:
         with:
           channel: 'stable'
           cache: true
+
+      - name: Scaffold Android Platform Files
+        working-directory: ./client
+        run: |
+          flutter create . --platforms=android --org com.crossdrop
+          sed -i '/<application/i <uses-permission android:name="android.permission.INTERNET"/>\n<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n<uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>\n<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>\n<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>' android/app/src/main/AndroidManifest.xml
+          sed -i 's/<application/<application android:usesCleartextTraffic="true"/' android/app/src/main/AndroidManifest.xml
 
       - name: Install Dependencies
         working-directory: ./client
