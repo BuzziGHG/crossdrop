@@ -100,41 +100,56 @@ class _MainNavigationState extends State<MainNavigation> {
                   Text('Neues Update v${update.latestVersion}'),
                 ],
               ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Installierte Version: ${AppConstants.appVersion}'),
-                  Text(
-                    'Neue Version: ${update.latestVersion}',
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal),
-                  ),
-                  const SizedBox(height: 14),
-                  const Text('Neuigkeiten & Verbesserungen:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 6),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(8),
+              content: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.6,
+                  maxWidth: 480,
+                ),
+                child: Scrollbar(
+                  thumbVisibility: true,
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Installierte Version: ${AppConstants.appVersion}'),
+                          Text(
+                            'Neue Version: ${update.latestVersion}',
+                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal),
+                          ),
+                          const SizedBox(height: 14),
+                          const Text('Neuigkeiten & Verbesserungen:', style: TextStyle(fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 6),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: SelectableText(
+                              update.releaseNotes,
+                              style: const TextStyle(fontSize: 13, height: 1.4),
+                            ),
+                          ),
+                          if (isDownloading) ...[
+                            const SizedBox(height: 16),
+                            LinearProgressIndicator(value: downloadProgress > 0 ? downloadProgress : null),
+                            const SizedBox(height: 8),
+                            Text('${(downloadProgress * 100).toStringAsFixed(0)}% heruntergeladen...'),
+                          ],
+                          if (errorMessage != null) ...[
+                            const SizedBox(height: 12),
+                            Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+                          ],
+                        ],
+                      ),
                     ),
-                    child: Text(
-                      update.releaseNotes,
-                      style: const TextStyle(fontSize: 13, height: 1.3),
-                    ),
                   ),
-                  if (isDownloading) ...[
-                    const SizedBox(height: 16),
-                    LinearProgressIndicator(value: downloadProgress > 0 ? downloadProgress : null),
-                    const SizedBox(height: 8),
-                    Text('${(downloadProgress * 100).toStringAsFixed(0)}% heruntergeladen...'),
-                  ],
-                  if (errorMessage != null) ...[
-                    const SizedBox(height: 12),
-                    Text(errorMessage!, style: const TextStyle(color: Colors.red, fontSize: 12)),
-                  ],
-                ],
+                ),
               ),
               actions: isDownloading
                   ? []
