@@ -14,7 +14,7 @@ class StorageService {
 
   // Server URL
   String get serverUrl =>
-      _prefs.getString(AppConstants.keyServerUrl) ?? 'http://127.0.0.1:8000';
+      _prefs.getString(AppConstants.keyServerUrl) ?? 'http://127.0.0.1:2603';
   Future<void> setServerUrl(String url) =>
       _prefs.setString(AppConstants.keyServerUrl, url.trim().replaceAll(RegExp(r'/+$'), ''));
 

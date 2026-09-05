@@ -133,7 +133,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       controller: _serverUrlController,
                       decoration: const InputDecoration(
                         labelText: 'Server-URL (Ihr Linux Server)',
-                        hintText: 'http://192.168.1.100:8000 oder https://...',
+                        hintText: 'http://192.168.1.100:2603 oder https://...',
                         prefixIcon: Icon(Icons.dns_outlined),
                         border: OutlineInputBorder(),
                       ),

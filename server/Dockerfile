@@ -16,11 +16,11 @@ COPY app/ ./app/
 # Environment variables with defaults
 ENV DATABASE_URL="sqlite:////data/crossdrop.db"
 ENV JWT_SECRET="change-this-secret-key-in-production-12345"
-ENV PORT=8000
+ENV PORT=2603
 
 # Create volume mount directory for SQLite persistence
 RUN mkdir -p /data
 
-EXPOSE 8000
+EXPOSE 2603
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "2603"]

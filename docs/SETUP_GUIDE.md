@@ -44,7 +44,7 @@ docker compose up -d --build
 **Fertig!**
 - Die Datenbank (SQLite) wird persistent im Ordner `./data/crossdrop.db` abgelegt.
 - Der Server hört standardmäßig auf Port `8000`.
-- Unter `http://<SERVER-IP>:8000/docs` können Sie die interaktive Swagger-API-Dokumentation aufrufen und testen.
+- Unter `http://<SERVER-IP>:2603/docs` können Sie die interaktive Swagger-API-Dokumentation aufrufen und testen.
 
 ### Schritt 3: Optional mit Domain & SSL (HTTPS) absichern
 Damit Ihre Geräte auch von unterwegs sicher über das Internet mit dem Server kommunizieren können, richten Sie Nginx mit einem kostenlosen Let's Encrypt Zertifikat ein:
@@ -58,7 +58,7 @@ server {
     server_name crossdrop.meinedomain.de;
 
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:2603;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

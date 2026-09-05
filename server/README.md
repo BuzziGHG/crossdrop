@@ -21,12 +21,12 @@ sudo systemctl enable --now docker
    cd /opt/crossdrop-server
    docker compose up -d --build
    ```
-4. Der Server läuft nun auf Port `8000`.
+4. Der Server läuft nun auf Port `2603`.
    Überprüfen Sie den Status mit:
    ```bash
    docker compose logs -f
    ```
-   Oder im Browser: `http://<IHRE-SERVER-IP>:8000/docs` (Interaktive Swagger-API-Dokumentation).
+   Oder im Browser: `http://<IHRE-SERVER-IP>:2603/docs` (Interaktive Swagger-API-Dokumentation).
 
 ---
 
@@ -46,7 +46,7 @@ server {
     server_name crossdrop.meinedomain.de; # Ersetzen mit Ihrer Domain
 
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:2603;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
