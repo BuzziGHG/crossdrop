@@ -1,0 +1,15 @@
+﻿version: '3.8'
+
+services:
+  crossdrop-server:
+    build: .
+    container_name: crossdrop-server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:////data/crossdrop.db
+      - JWT_SECRET=crossdrop-super-secure-jwt-token-replace-me-123456789
+      - ACCESS_TOKEN_EXPIRE_DAYS=30
+    volumes:
+      - ./data:/data
