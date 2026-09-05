@@ -38,12 +38,10 @@ class TransferServer {
         _storage.transferPort,
         shared: true,
       );
-      _server!.autoUncompress = false;
       _server!.listen(_handleRequest);
     } catch (e) {
       try {
         _server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
-        _server!.autoUncompress = false;
         _storage.setTransferPort(_server!.port);
         _server!.listen(_handleRequest);
       } catch (_) {}
