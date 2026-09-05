@@ -15,7 +15,7 @@ class TransferItem {
   final String peerIp;
   final int peerPort;
   final String? checksumSha256;
-  final String mode; // 'LAN' or 'VPN' or 'Relay'
+  String mode; // 'LAN' or 'VPN' or 'Relay'
   String? errorMessage;
   final DateTime createdAt;
 
