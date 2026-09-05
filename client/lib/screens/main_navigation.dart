@@ -257,11 +257,118 @@ class _MainNavigationState extends State<MainNavigation> {
     }
   }
 
+  Widget _buildActiveTransferBar(BuildContext context, TransferItem active) {
+    final theme = Theme.of(context);
+    final isSend = active.direction == TransferDirection.send;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() => _currentIndex = 1);
+        final state = Provider.of<AppState>(context, listen: false);
+        state.selectedNavIndex = 1;
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceVariant,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: theme.colorScheme.primary.withOpacity(0.35)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.08),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primaryContainer,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    isSend ? Icons.arrow_upward : Icons.arrow_downward,
+                    size: 16,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        active.filename,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Text(
+                        '${isSend ? "An" : "Von"} ${active.peerDeviceName} • ${active.formattedSpeed}',
+                        style: TextStyle(fontSize: 11, color: theme.colorScheme.outline),
+                      ),
+                    ],
+                  ),
+                ),
+                if (active.formattedEta.isNotEmpty) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.primaryContainer.withOpacity(0.6),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      '⏱️ ${active.formattedEta}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+                Text(
+                  '${(active.progress * 100).toStringAsFixed(0)}%',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(3),
+              child: LinearProgressIndicator(
+                value: active.progress > 0 ? active.progress : null,
+                minHeight: 4,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     _checkPendingApproval(context, state);
 
+    if (state.selectedNavIndex != _currentIndex) {
+      _currentIndex = state.selectedNavIndex;
+    }
+
+    final activeTransfer = state.activeTransfer;
     final isWideScreen = MediaQuery.of(context).size.width >= 700;
 
     if (isWideScreen) {
@@ -271,7 +378,10 @@ class _MainNavigationState extends State<MainNavigation> {
           children: [
             NavigationRail(
               selectedIndex: _currentIndex,
-              onDestinationSelected: (idx) => setState(() => _currentIndex = idx),
+              onDestinationSelected: (idx) {
+                setState(() => _currentIndex = idx);
+                state.selectedNavIndex = idx;
+              },
               labelType: NavigationRailLabelType.all,
               leading: const Padding(
                 padding: EdgeInsets.symmetric(vertical: 20.0),
@@ -300,7 +410,15 @@ class _MainNavigationState extends State<MainNavigation> {
               ],
             ),
             const VerticalDivider(thickness: 1, width: 1),
-            Expanded(child: _screens[_currentIndex]),
+            Expanded(
+              child: Column(
+                children: [
+                  Expanded(child: _screens[_currentIndex]),
+                  if (activeTransfer != null && _currentIndex != 1)
+                    _buildActiveTransferBar(context, activeTransfer),
+                ],
+              ),
+            ),
           ],
         ),
       );
@@ -308,10 +426,19 @@ class _MainNavigationState extends State<MainNavigation> {
 
     // Mobile layout with NavigationBar
     return Scaffold(
-      body: _screens[_currentIndex],
+      body: Column(
+        children: [
+          Expanded(child: _screens[_currentIndex]),
+          if (activeTransfer != null && _currentIndex != 1)
+            _buildActiveTransferBar(context, activeTransfer),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
-        onDestinationSelected: (idx) => setState(() => _currentIndex = idx),
+        onDestinationSelected: (idx) {
+          setState(() => _currentIndex = idx);
+          state.selectedNavIndex = idx;
+        },
         destinations: [
           const NavigationDestination(
             icon: Icon(Icons.devices_outlined),
@@ -337,3 +464,4 @@ class _MainNavigationState extends State<MainNavigation> {
     );
   }
 }
+

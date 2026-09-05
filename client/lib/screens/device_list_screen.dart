@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -130,24 +130,29 @@ class DeviceListScreen extends StatelessWidget {
                       ],
                     ),
                     const Divider(height: 24),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
+                    Row(
                       children: [
-                        Chip(
-                          avatar: const Icon(Icons.wifi, size: 16),
-                          label: Text(
-                            state.myLocalIps.isNotEmpty
-                                ? 'LAN: ${state.myLocalIps.join(", ")}'
-                                : 'LAN: Nicht verbunden',
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.green.withOpacity(0.3)),
                           ),
-                        ),
-                        Chip(
-                          avatar: const Icon(Icons.vpn_lock, size: 16),
-                          label: Text(
-                            state.myVpnIps.isNotEmpty
-                                ? 'VPN: ${state.myVpnIps.join(", ")}'
-                                : 'VPN: Inaktiv',
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.check_circle, size: 14, color: Colors.green),
+                              SizedBox(width: 6),
+                              Text(
+                                'Bereit zum Senden & Empfangen',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.green,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -272,64 +277,11 @@ class DeviceListScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 16),
 
-                        // Connection Mode Selector: LAN vs VPN
-                        Text(
-                          'Verbindungs-Modus:',
-                          style: theme.textTheme.labelMedium?.copyWith(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ChoiceChip(
-                                label: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Icon(Icons.wifi, size: 16),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      device.localIps.isNotEmpty
-                                          ? 'LAN (${device.localIps.first})'
-                                          : 'LAN (Keine IP)',
-                                    ),
-                                  ],
-                                ),
-                                selected: device.preferredMode == ConnectionMode.lan,
-                                onSelected: device.localIps.isNotEmpty
-                                    ? (_) => state.setDeviceConnectionMode(device, ConnectionMode.lan)
-                                    : null,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: ChoiceChip(
-                                label: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    const Icon(Icons.vpn_lock, size: 16),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      device.vpnIps.isNotEmpty
-                                          ? 'VPN (${device.vpnIps.first})'
-                                          : 'VPN (Keine IP)',
-                                    ),
-                                  ],
-                                ),
-                                selected: device.preferredMode == ConnectionMode.vpn,
-                                onSelected: device.vpnIps.isNotEmpty
-                                    ? (_) => state.setDeviceConnectionMode(device, ConnectionMode.vpn)
-                                    : null,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-
                         // Send Button
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton.icon(
-                            icon: const Icon(Icons.upload_file),
+                            icon: const Icon(Icons.send_rounded),
                             label: const Text('Datei an dieses Gerät senden'),
                             onPressed: isOnline ? () => _pickAndSendFile(context, device) : null,
                           ),

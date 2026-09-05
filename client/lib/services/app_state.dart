@@ -38,6 +38,29 @@ class AppState extends ChangeNotifier {
   TransferItem? pendingApprovalItem;
   Completer<bool>? _approvalCompleter;
 
+  // Active send task tracking
+  String? activeSendingTaskId;
+
+  // Tab navigation state
+  int selectedNavIndex = 0;
+
+  void setNavIndex(int index) {
+    if (selectedNavIndex != index) {
+      selectedNavIndex = index;
+      notifyListeners();
+    }
+  }
+
+  TransferItem? get activeTransfer {
+    try {
+      return transfers.firstWhere(
+        (t) => t.status == TransferStatus.running || t.status == TransferStatus.connecting,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
   AppState(this.storage) {
     api = ApiService(storage);
     server = TransferServer(storage);
@@ -404,28 +427,39 @@ class AppState extends ChangeNotifier {
 
     final modeString = mode == ConnectionMode.vpn ? 'VPN' : 'LAN';
 
-    await TransferClient.sendFile(
-      file: file,
-      targetIp: targetIp,
-      targetPort: targetDevice.transferPort,
-      targetDeviceName: targetDevice.name,
-      senderDeviceName: deviceName,
-      connectionMode: modeString,
-      targetDeviceId: targetDevice.id,
-      senderDeviceId: storage.deviceId,
-      serverUrl: storage.serverUrl,
-      token: storage.token,
-      vpnTunnel: vpnTunnel,
-      onProgress: (item) {
-        final idx = transfers.indexWhere((t) => t.id == item.id);
-        if (idx != -1) {
-          transfers[idx] = item;
-        } else {
-          transfers.insert(0, item);
+    try {
+      await TransferClient.sendFile(
+        file: file,
+        targetIp: targetIp,
+        targetPort: targetDevice.transferPort,
+        targetDeviceName: targetDevice.name,
+        senderDeviceName: deviceName,
+        connectionMode: modeString,
+        targetDeviceId: targetDevice.id,
+        senderDeviceId: storage.deviceId,
+        serverUrl: storage.serverUrl,
+        token: storage.token,
+        vpnTunnel: vpnTunnel,
+        onProgress: (item) {
+          activeSendingTaskId = item.id;
+          final idx = transfers.indexWhere((t) => t.id == item.id);
+          if (idx != -1) {
+            transfers[idx] = item;
+          } else {
+            transfers.insert(0, item);
+          }
+          notifyListeners();
+        },
+      );
+    } finally {
+      // Keep activeSendingTaskId visible briefly for UI to show finished state
+      Future.delayed(const Duration(seconds: 4), () {
+        if (activeSendingTaskId != null) {
+          activeSendingTaskId = null;
+          notifyListeners();
         }
-        notifyListeners();
-      },
-    );
+      });
+    }
   }
 
   void setDeviceConnectionMode(DeviceModel device, ConnectionMode mode) {

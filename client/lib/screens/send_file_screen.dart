@@ -94,6 +94,193 @@ class _SendFileScreenState extends State<SendFileScreen> {
       _selectedDevice = state.devices.first;
     }
 
+    // If currently sending and we have an active transfer item, show live progress view!
+    final activeItem = state.activeSendingTaskId != null
+        ? state.transfers.where((t) => t.id == state.activeSendingTaskId).firstOrNull
+        : null;
+
+    if (_isSending && activeItem != null) {
+      final isDone = activeItem.status == TransferStatus.completed;
+      final isFailed = activeItem.status == TransferStatus.failed;
+
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Datei wird übertragen'),
+          automaticallyImplyLeading: false,
+        ),
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Card(
+              elevation: 4,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Status Icon
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: isDone
+                            ? Colors.green.withOpacity(0.15)
+                            : (isFailed ? Colors.red.withOpacity(0.15) : theme.colorScheme.primaryContainer),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        isDone
+                            ? Icons.check_circle_rounded
+                            : (isFailed ? Icons.error_rounded : Icons.cloud_upload_rounded),
+                        size: 48,
+                        color: isDone
+                            ? Colors.green
+                            : (isFailed ? Colors.red : theme.colorScheme.primary),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Filename & Target
+                    Text(
+                      activeItem.filename,
+                      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'An: ${activeItem.peerDeviceName} (${activeItem.mode})',
+                      style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Progress Bar
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: LinearProgressIndicator(
+                        value: activeItem.progress > 0 ? activeItem.progress : null,
+                        minHeight: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Percentage & Transferred / Total
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '${(activeItem.progress * 100).toStringAsFixed(1)}%',
+                          style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          '${activeItem.formattedTransferred} / ${activeItem.formattedSize}',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Speed & Remaining Time (ETA) Badges
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Column(
+                              children: [
+                                const Text('Geschwindigkeit', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                                const SizedBox(height: 2),
+                                Text(
+                                  activeItem.formattedSpeed,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                    color: theme.colorScheme.primary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Column(
+                              children: [
+                                const Text('Verbleibende Zeit', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                                const SizedBox(height: 2),
+                                Text(
+                                  activeItem.formattedEta.isNotEmpty
+                                      ? activeItem.formattedEta
+                                      : (isDone ? 'Abgeschlossen' : (isFailed ? 'Fehlgeschlagen' : 'Berechne...')),
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                    color: isDone ? Colors.green : (isFailed ? Colors.red : theme.colorScheme.primary),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Action Button
+                    if (isDone)
+                      FilledButton.icon(
+                        icon: const Icon(Icons.check),
+                        label: const Text('Fertig'),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 48),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          state.setNavIndex(1);
+                        },
+                      )
+                    else if (isFailed)
+                      FilledButton.icon(
+                        icon: const Icon(Icons.close),
+                        label: const Text('Schließen'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          minimumSize: const Size(double.infinity, 48),
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                      )
+                    else
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.open_in_new),
+                        label: const Text('Im Hintergrund fortsetzen'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 48),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          state.setNavIndex(1);
+                        },
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Datei senden'),
@@ -243,14 +430,8 @@ class _SendFileScreenState extends State<SendFileScreen> {
 
             // 4. Send Button
             FilledButton.icon(
-              icon: _isSending
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Icon(Icons.send_rounded),
-              label: Text(_isSending ? 'Verbinde...' : 'Datei jetzt übertragen'),
+              icon: const Icon(Icons.send_rounded),
+              label: const Text('Datei jetzt übertragen'),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 18),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -265,3 +446,4 @@ class _SendFileScreenState extends State<SendFileScreen> {
     );
   }
 }
+

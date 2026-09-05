@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:provider/provider.dart';
 import '../models/transfer_item.dart';
@@ -151,13 +151,13 @@ class TransfersScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 12),
 
-                        // Progress Bar (if running or pending)
+                        // Progress Bar (if running or connecting)
                         if (item.status == TransferStatus.running || item.status == TransferStatus.connecting) ...[
                           ClipRRect(
-                            borderRadius: BorderRadius.circular(4),
+                            borderRadius: BorderRadius.circular(6),
                             child: LinearProgressIndicator(
                               value: item.progress > 0 ? item.progress : null,
-                              minHeight: 8,
+                              minHeight: 10,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -166,16 +166,49 @@ class TransfersScreen extends StatelessWidget {
                             children: [
                               Text(
                                 '${(item.progress * 100).toStringAsFixed(1)}% (${item.formattedTransferred} / ${item.formattedSize})',
-                                style: theme.textTheme.bodySmall,
+                                style: theme.textTheme.bodySmall?.copyWith(fontWeight: FontWeight.w600),
                               ),
-                              Text(
-                                item.formattedSpeed,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  color: theme.colorScheme.primary,
-                                ),
+                              Row(
+                                children: [
+                                  if (item.formattedEta.isNotEmpty) ...[
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: theme.colorScheme.primaryContainer.withOpacity(0.6),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        '⏱️ ${item.formattedEta}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: theme.colorScheme.primary,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ],
+                                  Text(
+                                    item.formattedSpeed,
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: theme.colorScheme.primary,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            item.status == TransferStatus.connecting
+                                ? (item.direction == TransferDirection.receive
+                                    ? 'Warte auf Bereitstellung durch Sender... (Relay)'
+                                    : 'Verbindung wird aufgebaut...')
+                                : (item.direction == TransferDirection.send
+                                    ? 'Wird gesendet...'
+                                    : 'Wird heruntergeladen...'),
+                            style: TextStyle(fontSize: 11, color: theme.colorScheme.outline),
                           ),
                         ] else ...[
                           Row(

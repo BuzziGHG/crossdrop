@@ -56,6 +56,28 @@ class TransferItem {
     return '${formatBytes(speedBytesPerSecond.round())}/s';
   }
 
+  String get formattedEta {
+    if (status != TransferStatus.running || speedBytesPerSecond <= 100 || totalBytes <= 0) {
+      return '';
+    }
+    final remainingBytes = totalBytes - bytesTransferred;
+    if (remainingBytes <= 0) return 'Fertig';
+    final secondsRemaining = (remainingBytes / speedBytesPerSecond).ceil();
+    if (secondsRemaining <= 1) {
+      return 'noch 1 Sek.';
+    } else if (secondsRemaining < 60) {
+      return 'noch ${secondsRemaining}s';
+    } else if (secondsRemaining < 3600) {
+      final minutes = secondsRemaining ~/ 60;
+      final sec = secondsRemaining % 60;
+      return 'noch ${minutes}m ${sec}s';
+    } else {
+      final hours = secondsRemaining ~/ 3600;
+      final minutes = (secondsRemaining % 3600) ~/ 60;
+      return 'noch ${hours}h ${minutes}m';
+    }
+  }
+
   static String formatBytes(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
