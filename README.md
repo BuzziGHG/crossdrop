@@ -9,7 +9,7 @@
 
 ---
 
-## 📥 Downloads (Aktuelle Version 1.3.2)
+## 📥 Downloads (Aktuelle Version 1.3.3)
 
 Wählen Sie einfach Ihr Betriebssystem aus und laden Sie die passende Version herunter:
 
@@ -17,15 +17,19 @@ Wählen Sie einfach Ihr Betriebssystem aus und laden Sie die passende Version he
 | :--- | :--- | :--- | :--- |
 | 🪟 **Windows 10 / 11** | Setup-Installer (`.exe`) | [⬇️ CrossDrop-Windows-Setup.exe](https://github.com/BuzziGHG/crossdrop/releases/latest/download/CrossDrop-Windows-Setup.exe) *(Empfohlen)* | [⚡ Direktdownload](http://82.29.5.240:2603/api/updates/download/windows) |
 | 🪟 **Windows (Portabel)** | ZIP-Archiv | [⬇️ CrossDrop-Windows-x64.zip](https://github.com/BuzziGHG/crossdrop/releases/latest/download/CrossDrop-Windows-x64.zip) | - |
-| 🐧 **Linux (Debian / Ubuntu)** | Paket (`.deb`) | [⬇️ crossdrop_1.3.2_amd64.deb](https://github.com/BuzziGHG/crossdrop/releases/latest/download/crossdrop_1.3.2_amd64.deb) | [⚡ Direktdownload](http://82.29.5.240:2603/api/updates/download/linux) |
+| 🐧 **Linux (Debian / Ubuntu)** | Paket (`.deb`) | [⬇️ crossdrop_1.3.3_amd64.deb](https://github.com/BuzziGHG/crossdrop/releases/latest/download/crossdrop_1.3.3_amd64.deb) | [⚡ Direktdownload](http://82.29.5.240:2603/api/updates/download/linux) |
 | 📱 **Android** | App-Paket (`.apk`) | [⬇️ crossdrop-release.apk](https://github.com/BuzziGHG/crossdrop/releases/latest/download/crossdrop-release.apk) | [⚡ Direktdownload](http://82.29.5.240:2603/api/updates/download/android) |
 
 👉 **[Alle Downloads und Versionshinweise auf der Release-Seite ansehen](https://github.com/BuzziGHG/crossdrop/releases)**
 
 ---
 
-## ✨ Was ist neu in Version 1.3.2?
+## ✨ Was ist neu in Version 1.3.3?
 
+- 🛠️ **In-App Update Download Fix (Android):**
+  - Behebt das Hängenbleiben bei `100% heruntergeladen...`: Umstellung auf nativen Stream mit automatischem Abbruch- und Abschluss-Trigger bei Vollendung aller Bytes.
+  - Der Update-Dialog kann nicht mehr einfrieren: Neuer **"Abbrechen"**-Button während des Downloads und Dialog schließbar (`barrierDismissible`), um Nutzer nie mehr einzusperren.
+  - Sichere Dateiablage im geschützten App-Speicher mit automatischem Export in den öffentlichen Android `Download`-Ordner.
 - 📱 **Android Hintergrund-Service & Verbindungsstabilität (WakeLock & WifiLock):**
   - Datenübertragungen auf Android brechen beim Wechsel in eine andere App, beim Ausschalten des Bildschirms oder beim Verlassen der App nicht mehr ab!
   - Native Registrierung als `TransferForegroundService` mit `foregroundServiceType="dataSync"`, CPU-`PARTIAL_WAKE_LOCK` und Low-Latency `WifiLock`.

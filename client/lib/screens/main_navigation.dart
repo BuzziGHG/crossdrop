@@ -85,7 +85,7 @@ class _MainNavigationState extends State<MainNavigation> {
   void _showUpdateDialog(BuildContext context, UpdateInfo update, UpdateService service) {
     showDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (ctx) {
         double downloadProgress = 0.0;
         bool isDownloading = false;
@@ -95,120 +95,142 @@ class _MainNavigationState extends State<MainNavigation> {
 
         return StatefulBuilder(
           builder: (dialogCtx, setDialogState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              title: Row(
-                children: [
-                  const Icon(Icons.rocket_launch, color: Colors.teal),
-                  const SizedBox(width: 10),
-                  Text('Neues Update v${update.latestVersion}'),
-                ],
-              ),
-              content: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.of(context).size.height * 0.6,
-                  maxWidth: 480,
+            return PopScope(
+              canPop: true,
+              onPopInvokedWithResult: (didPop, _) {
+                if (didPop && isDownloading) {
+                  service.cancelDownload();
+                }
+              },
+              child: AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                title: Row(
+                  children: [
+                    const Icon(Icons.rocket_launch, color: Colors.teal),
+                    const SizedBox(width: 10),
+                    Text('Neues Update v${update.latestVersion}'),
+                  ],
                 ),
-                child: Scrollbar(
-                  thumbVisibility: true,
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Installierte Version: ${AppConstants.appVersion}'),
-                          Text(
-                            'Neue Version: ${update.latestVersion}',
-                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal),
-                          ),
-                          const SizedBox(height: 14),
-                          const Text('Neuigkeiten & Verbesserungen:', style: TextStyle(fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 6),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                              borderRadius: BorderRadius.circular(8),
+                content: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxHeight: MediaQuery.of(context).size.height * 0.6,
+                    maxWidth: 480,
+                  ),
+                  child: Scrollbar(
+                    thumbVisibility: true,
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Installierte Version: ${AppConstants.appVersion}'),
+                            Text(
+                              'Neue Version: ${update.latestVersion}',
+                              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal),
                             ),
-                            child: SelectableText(
-                              update.releaseNotes,
-                              style: const TextStyle(fontSize: 13, height: 1.4),
-                            ),
-                          ),
-                          if (isDownloading && !isDownloaded) ...[
-                            const SizedBox(height: 16),
-                            LinearProgressIndicator(value: downloadProgress > 0 ? downloadProgress : null),
-                            const SizedBox(height: 8),
-                            Text('${(downloadProgress * 100).toStringAsFixed(0)}% heruntergeladen...'),
-                          ],
-                          if (isDownloaded) ...[
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 14),
+                            const Text('Neuigkeiten & Verbesserungen:', style: TextStyle(fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 6),
                             Container(
+                              width: double.infinity,
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: Colors.green.withOpacity(0.12),
+                                color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.green.withOpacity(0.4)),
                               ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Row(
-                                    children: [
-                                      Icon(Icons.check_circle, color: Colors.green, size: 20),
-                                      SizedBox(width: 8),
-                                      Text(
-                                        'Download 100% abgeschlossen!',
-                                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    Platform.isAndroid
-                                        ? 'Die Update-Datei liegt in "Downloads". Tippen Sie unten auf "Jetzt installieren". Falls die Installation blockiert wird, bitte "Berechtigung prüfen" antippen.'
-                                        : 'Das Update wurde erfolgreich heruntergeladen. Tippen Sie auf "Jetzt installieren", um die Aktualisierung abzuschließen.',
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
-                                ],
+                              child: SelectableText(
+                                update.releaseNotes,
+                                style: const TextStyle(fontSize: 13, height: 1.4),
                               ),
                             ),
-                          ],
-                          if (errorMessage != null) ...[
-                            const SizedBox(height: 12),
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: Colors.red.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.red.withOpacity(0.3)),
+                            if (isDownloading && !isDownloaded) ...[
+                              const SizedBox(height: 16),
+                              LinearProgressIndicator(value: downloadProgress > 0 ? downloadProgress : null),
+                              const SizedBox(height: 8),
+                              Text(
+                                downloadProgress >= 0.98
+                                    ? 'Wird abgeschlossen... Bitte warten'
+                                    : '${(downloadProgress * 100).toStringAsFixed(0)}% heruntergeladen...',
                               ),
-                              child: Text(
-                                errorMessage!,
-                                style: const TextStyle(color: Colors.red, fontSize: 12),
+                            ],
+                            if (isDownloaded) ...[
+                              const SizedBox(height: 16),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.green.withOpacity(0.4)),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Row(
+                                      children: [
+                                        Icon(Icons.check_circle, color: Colors.green, size: 20),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          'Download abgeschlossen!',
+                                          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      Platform.isAndroid
+                                          ? 'Die Update-Datei wurde heruntergeladen. Tippen Sie unten auf "Jetzt installieren". Falls die Installation blockiert wird, bitte "Berechtigung prüfen" antippen.'
+                                          : 'Das Update wurde erfolgreich heruntergeladen. Tippen Sie auf "Jetzt installieren", um die Aktualisierung abzuschließen.',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
+                            ],
+                            if (errorMessage != null) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                                ),
+                                child: Text(
+                                  errorMessage!,
+                                  style: const TextStyle(color: Colors.red, fontSize: 12),
+                                ),
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-              actions: isDownloading && !isDownloaded
-                  ? [
-                      Padding(
-                        padding: const EdgeInsets.only(right: 12),
-                        child: Text(
-                          '${(downloadProgress * 100).toStringAsFixed(0)}%',
-                          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal),
+                actions: isDownloading && !isDownloaded
+                    ? [
+                        TextButton(
+                          onPressed: () {
+                            service.cancelDownload();
+                            setDialogState(() {
+                              isDownloading = false;
+                              downloadProgress = 0.0;
+                              errorMessage = 'Download abgebrochen.';
+                            });
+                          },
+                          child: const Text('Abbrechen', style: TextStyle(color: Colors.red)),
                         ),
-                      ),
-                    ]
+                        Padding(
+                          padding: const EdgeInsets.only(right: 12, left: 8),
+                          child: Text(
+                            '${(downloadProgress * 100).toStringAsFixed(0)}%',
+                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal),
+                          ),
+                        ),
+                      ]
                   : isDownloaded
                       ? [
                           TextButton(
@@ -270,6 +292,7 @@ class _MainNavigationState extends State<MainNavigation> {
                             },
                           ),
                         ],
+              ),
             );
           },
         );

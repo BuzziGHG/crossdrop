@@ -92,12 +92,24 @@ class UpdateService {
     } catch (_) {}
   }
 
+  HttpClient? _activeClient;
+  bool _isCancelled = false;
+
+  void cancelDownload() {
+    _isCancelled = true;
+    try {
+      _activeClient?.close(force: true);
+    } catch (_) {}
+    _activeClient = null;
+  }
+
   Future<void> downloadAndInstall({
     required UpdateInfo updateInfo,
     required Function(double progress) onProgress,
     required Function(String filePath) onDownloaded,
     required Function(String error) onError,
   }) async {
+    _isCancelled = false;
     try {
       String fullDownloadUrl = updateInfo.downloadUrl;
       if (!fullDownloadUrl.startsWith('http')) {
@@ -105,51 +117,97 @@ class UpdateService {
       }
 
       final uri = Uri.parse(fullDownloadUrl);
-      final client = http.Client();
-      final request = http.Request('GET', uri);
-      final streamedResponse = await client.send(request);
+      final client = HttpClient()
+        ..badCertificateCallback = ((cert, host, port) => true)
+        ..connectionTimeout = const Duration(seconds: 15);
+      _activeClient = client;
 
-      if (streamedResponse.statusCode != 200) {
-        onError('Download-Server antwortete mit Status ${streamedResponse.statusCode}');
+      final request = await client.getUrl(uri);
+      request.headers.set(HttpHeaders.connectionHeader, 'close');
+      request.headers.set(HttpHeaders.acceptEncodingHeader, 'identity');
+      final response = await request.close();
+
+      if (response.statusCode != 200) {
+        client.close(force: true);
+        _activeClient = null;
+        onError('Download-Server antwortete mit Status ${response.statusCode}');
         return;
       }
 
-      final totalBytes = streamedResponse.contentLength ?? updateInfo.fileSize;
+      final totalBytes = response.contentLength > 0 ? response.contentLength : updateInfo.fileSize;
       int receivedBytes = 0;
 
       String targetDir;
       if (Platform.isAndroid) {
-        final dlDir = Directory('/storage/emulated/0/Download');
-        if (await dlDir.exists()) {
-          targetDir = dlDir.path;
-        } else {
-          final ext = await getExternalStorageDirectory();
-          targetDir = ext?.path ?? (await getTemporaryDirectory()).path;
-        }
+        final ext = await getExternalStorageDirectory();
+        targetDir = ext?.path ?? (await getApplicationDocumentsDirectory()).path;
       } else {
         targetDir = (await getTemporaryDirectory()).path;
       }
-      final targetFile = File(p.join(targetDir, updateInfo.fileName));
-      final sink = targetFile.openWrite();
 
-      await for (final chunk in streamedResponse.stream) {
-        sink.add(chunk);
-        receivedBytes += chunk.length;
-        if (totalBytes > 0) {
-          onProgress(receivedBytes / totalBytes);
-        }
+      final targetFile = File(p.join(targetDir, updateInfo.fileName));
+      if (await targetFile.exists()) {
+        try {
+          await targetFile.delete();
+        } catch (_) {}
       }
 
-      await sink.flush();
-      await sink.close();
+      final sink = targetFile.openWrite();
+
+      try {
+        await for (final chunk in response.timeout(const Duration(seconds: 30))) {
+          if (_isCancelled) break;
+          sink.add(chunk);
+          receivedBytes += chunk.length;
+          if (totalBytes > 0) {
+            final raw = receivedBytes / totalBytes;
+            onProgress(raw.clamp(0.0, 0.98));
+          }
+          if (totalBytes > 0 && receivedBytes >= totalBytes) {
+            // All bytes received
+            break;
+          }
+        }
+      } finally {
+        await sink.flush();
+        await sink.close();
+        client.close(force: true);
+        _activeClient = null;
+      }
+
+      if (_isCancelled) {
+        onError('Download wurde abgebrochen.');
+        return;
+      }
+
+      if (totalBytes > 0 && receivedBytes < totalBytes) {
+        onError('Download unvollständig ($receivedBytes von $totalBytes Bytes übertragen).');
+        return;
+      }
+
+      // Best effort copy to public downloads on Android
+      if (Platform.isAndroid) {
+        try {
+          final pubDir = Directory('/storage/emulated/0/Download');
+          if (await pubDir.exists()) {
+            final pubFile = File(p.join(pubDir.path, updateInfo.fileName));
+            await targetFile.copy(pubFile.path);
+            debugPrint('Copied update APK to public Download folder: ${pubFile.path}');
+          }
+        } catch (e) {
+          debugPrint('Notice: could not copy to public Download folder: $e');
+        }
+      }
 
       onProgress(1.0);
       onDownloaded(targetFile.path);
 
-      // Attempt to launch installer immediately
+      // Attempt immediate installer launch
       await installUpdate(targetFile.path);
     } catch (e) {
-      onError('Fehler beim Herunterladen des Updates: $e');
+      if (!_isCancelled) {
+        onError('Fehler beim Herunterladen des Updates: $e');
+      }
     }
   }
 
@@ -165,6 +223,10 @@ class UpdateService {
         try {
           final res = await _installerChannel.invokeMethod<bool>('installApk', {'filePath': filePath});
           if (res == true) return true;
+          if (res == false) {
+            // Permission not yet granted; native code directed user to settings
+            return false;
+          }
         } catch (e) {
           debugPrint('Native installer channel error: $e');
         }
