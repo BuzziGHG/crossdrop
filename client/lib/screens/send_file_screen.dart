@@ -180,6 +180,7 @@ class _SendFileScreenState extends State<SendFileScreen> {
     if (_isSending && activeItem != null) {
       final isDone = activeItem.status == TransferStatus.completed;
       final isFailed = activeItem.status == TransferStatus.failed;
+      final isCancelled = activeItem.status == TransferStatus.cancelled;
 
       return Scaffold(
         appBar: AppBar(
@@ -203,17 +204,21 @@ class _SendFileScreenState extends State<SendFileScreen> {
                       decoration: BoxDecoration(
                         color: isDone
                             ? Colors.green.withOpacity(0.15)
-                            : (isFailed ? Colors.red.withOpacity(0.15) : theme.colorScheme.primaryContainer),
+                            : (isFailed
+                                ? Colors.red.withOpacity(0.15)
+                                : (isCancelled ? Colors.orange.withOpacity(0.15) : theme.colorScheme.primaryContainer)),
                         shape: BoxShape.circle,
                       ),
                       child: Icon(
                         isDone
                             ? Icons.check_circle_rounded
-                            : (isFailed ? Icons.error_rounded : Icons.cloud_upload_rounded),
+                            : (isFailed
+                                ? Icons.error_rounded
+                                : (isCancelled ? Icons.cancel_outlined : Icons.cloud_upload_rounded)),
                         size: 48,
                         color: isDone
                             ? Colors.green
-                            : (isFailed ? Colors.red : theme.colorScheme.primary),
+                            : (isFailed ? Colors.red : (isCancelled ? Colors.orange : theme.colorScheme.primary)),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -300,11 +305,19 @@ class _SendFileScreenState extends State<SendFileScreen> {
                                 Text(
                                   activeItem.formattedEta.isNotEmpty
                                       ? activeItem.formattedEta
-                                      : (isDone ? 'Abgeschlossen' : (isFailed ? 'Fehlgeschlagen' : 'Berechne...')),
+                                      : (isDone
+                                          ? 'Abgeschlossen'
+                                          : (isFailed
+                                              ? 'Fehlgeschlagen'
+                                              : (isCancelled ? 'Abgebrochen' : 'Berechne...'))),
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 13,
-                                    color: isDone ? Colors.green : (isFailed ? Colors.red : theme.colorScheme.primary),
+                                    color: isDone
+                                        ? Colors.green
+                                        : (isFailed
+                                            ? Colors.red
+                                            : (isCancelled ? Colors.orange : theme.colorScheme.primary)),
                                   ),
                                 ),
                               ],
@@ -370,17 +383,44 @@ class _SendFileScreenState extends State<SendFileScreen> {
                         ),
                         onPressed: () => Navigator.pop(context),
                       )
-                    else
-                      OutlinedButton.icon(
-                        icon: const Icon(Icons.open_in_new),
-                        label: const Text('Im Hintergrund fortsetzen'),
-                        style: OutlinedButton.styleFrom(
+                    else if (isCancelled)
+                      FilledButton.icon(
+                        icon: const Icon(Icons.close),
+                        label: const Text('Abgebrochen – Schließen'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Colors.orange,
                           minimumSize: const Size(double.infinity, 48),
                         ),
-                        onPressed: () {
-                          Navigator.pop(context);
-                          state.setNavIndex(1);
-                        },
+                        onPressed: () => Navigator.pop(context),
+                      )
+                    else
+                      Column(
+                        children: [
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.open_in_new),
+                            label: const Text('Im Hintergrund fortsetzen'),
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(double.infinity, 48),
+                            ),
+                            onPressed: () {
+                              Navigator.pop(context);
+                              state.setNavIndex(1);
+                            },
+                          ),
+                          const SizedBox(height: 10),
+                          OutlinedButton.icon(
+                            icon: const Icon(Icons.cancel_outlined, color: Colors.red),
+                            label: const Text('Übertragung abbrechen', style: TextStyle(color: Colors.red)),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Colors.red),
+                              minimumSize: const Size(double.infinity, 48),
+                            ),
+                            onPressed: () {
+                              state.cancelTransfer(activeItem.id);
+                              Navigator.pop(context);
+                            },
+                          ),
+                        ],
                       ),
                   ],
                 ),

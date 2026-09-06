@@ -9,7 +9,7 @@
 
 ---
 
-## 📥 Downloads (Aktuelle Version 1.3.1)
+## 📥 Downloads (Aktuelle Version 1.3.2)
 
 Wählen Sie einfach Ihr Betriebssystem aus und laden Sie die passende Version herunter:
 
@@ -17,32 +17,28 @@ Wählen Sie einfach Ihr Betriebssystem aus und laden Sie die passende Version he
 | :--- | :--- | :--- | :--- |
 | 🪟 **Windows 10 / 11** | Setup-Installer (`.exe`) | [⬇️ CrossDrop-Windows-Setup.exe](https://github.com/BuzziGHG/crossdrop/releases/latest/download/CrossDrop-Windows-Setup.exe) *(Empfohlen)* | [⚡ Direktdownload](http://82.29.5.240:2603/api/updates/download/windows) |
 | 🪟 **Windows (Portabel)** | ZIP-Archiv | [⬇️ CrossDrop-Windows-x64.zip](https://github.com/BuzziGHG/crossdrop/releases/latest/download/CrossDrop-Windows-x64.zip) | - |
-| 🐧 **Linux (Debian / Ubuntu)** | Paket (`.deb`) | [⬇️ crossdrop_1.3.1_amd64.deb](https://github.com/BuzziGHG/crossdrop/releases/latest/download/crossdrop_1.3.1_amd64.deb) | [⚡ Direktdownload](http://82.29.5.240:2603/api/updates/download/linux) |
+| 🐧 **Linux (Debian / Ubuntu)** | Paket (`.deb`) | [⬇️ crossdrop_1.3.2_amd64.deb](https://github.com/BuzziGHG/crossdrop/releases/latest/download/crossdrop_1.3.2_amd64.deb) | [⚡ Direktdownload](http://82.29.5.240:2603/api/updates/download/linux) |
 | 📱 **Android** | App-Paket (`.apk`) | [⬇️ crossdrop-release.apk](https://github.com/BuzziGHG/crossdrop/releases/latest/download/crossdrop-release.apk) | [⚡ Direktdownload](http://82.29.5.240:2603/api/updates/download/android) |
 
 👉 **[Alle Downloads und Versionshinweise auf der Release-Seite ansehen](https://github.com/BuzziGHG/crossdrop/releases)**
 
 ---
 
-## ✨ Was ist neu in Version 1.3.1?
+## ✨ Was ist neu in Version 1.3.2?
 
-- 📱 **Android In-App Update & Paket-Installer behoben:**
-  - Natives Android `FileProvider` (`filepaths.xml`) für sichere Installation aus dem öffentlichen Downloads-Ordner konfiguriert.
-  - Eigener nativer MethodChannel zur zuverlässigen Übergabe an den Android-System-Installer (`ACTION_VIEW`).
-  - Automatisches Öffnen der Systemeinstellungen für *"Unbekannte Apps installieren"*, falls die Berechtigung noch nicht erteilt wurde.
-  - Das Update-Fenster bleibt nach dem 100%-Download geöffnet und bietet nun klare Buttons: **[ Jetzt installieren ]** und **[ Berechtigung prüfen ]**.
+- 📱 **Android Hintergrund-Service & Verbindungsstabilität (WakeLock & WifiLock):**
+  - Datenübertragungen auf Android brechen beim Wechsel in eine andere App, beim Ausschalten des Bildschirms oder beim Verlassen der App nicht mehr ab!
+  - Native Registrierung als `TransferForegroundService` mit `foregroundServiceType="dataSync"`, CPU-`PARTIAL_WAKE_LOCK` und Low-Latency `WifiLock`.
+  - Intelligentes `PopScope` fängt die Android Zurück-Taste am Hauptbildschirm ab und minimiert die App per `moveTaskToBack(true)` sicher in den Hintergrund, anstatt den Prozess zu beenden.
+- 🛑 **Plattformübergreifendes Abbrechen von Dateiübertragungen:**
+  - Neue **"Abbrechen"**-Schaltflächen in der Übertragungsübersicht, im Dashboard-Banner und im Übertragungs-Dialog auf allen Plattformen (Windows, Linux, Android).
+  - Sofortiges Schließen der Socket-Verbindungen, Bereinigung unvollständiger temporärer Dateien und synchrone Benachrichtigung des Partners (`transfer_cancelled`).
+- 📱 **Android In-App Update & Paket-Installer (aus v1.3.1):**
+  - Eigener nativer MethodChannel für den Android-System-Installer (`ACTION_VIEW`) mit FileProvider.
 - 💾 **Zero-Disk In-Memory Streaming Relay:**
-  Dateien werden nicht mehr auf der Festplatte des Servers zwischengespeichert! Der Server fungiert als reine In-Memory Pipeline (`RelayPipe` mit ~1 MB Puffer). Selbst Dateien mit 100 GB oder mehr verbrauchen **0 Byte Server-Festplatte** und überlasten niemals den Speicher.
+  - Datenübertragungen verbrauchen 0 Byte Server-Festplatte dank RAM-Pipeline (`RelayPipe`).
 - 📊 **100 % synchrone Live-Fortschrittsanzeige:**
-  Sender und Empfänger sind gleichzeitig verbunden. Beide Fortschrittsbalken laufen in Echtzeit absolut synchron von **0 % bis 100 %** mit exakt identischer Geschwindigkeit und Restzeit (ETA).
-- 📧 **Cross-Account Transfer via E-Mail:**
-  Dateien können direkt an andere registrierte CrossDrop-Accounts gesendet werden. Aus Sicherheitsgründen muss der Empfänger externe Sendungen vor Beginn immer explizit bestätigen.
-- ⚡ **Automatisches Auto-Accept für eigene Geräte:**
-  Übertragungen zwischen den eigenen registrierten Geräten werden vollautomatisch angenommen – kein lästiges manuelles Bestätigen mehr!
-- 🔔 **Hintergrund-Übertragung & Notification-Fortschritt:**
-  Übertragungen laufen dank Wakelock zuverlässig im Hintergrund weiter. Auf Android und Desktop informiert ein Live-Fortschrittsbalken direkt in der Benachrichtigungsleiste.
-- 🔄 **Integrierter Auto-Updater:**
-  Erkennt neue Updates automatisch und ermöglicht die Aktualisierung mit einem Klick direkt aus der App heraus.
+  - Sender und Empfänger sehen in Echtzeit synchron denselben Fortschritt (0–100 %), exakt identische Geschwindigkeiten und Restzeiten (ETA).
 
 ---
 

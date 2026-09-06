@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/services.dart';
 import '../models/transfer_item.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -467,6 +468,15 @@ class _MainNavigationState extends State<MainNavigation> {
                     color: theme.colorScheme.primary,
                   ),
                 ),
+                const SizedBox(width: 4),
+                IconButton(
+                  icon: const Icon(Icons.cancel_outlined, color: Colors.red, size: 20),
+                  tooltip: 'Abbrechen',
+                  onPressed: () {
+                    final state = Provider.of<AppState>(context, listen: false);
+                    state.cancelTransfer(active.id);
+                  },
+                ),
               ],
             ),
             const SizedBox(height: 6),
@@ -495,96 +505,105 @@ class _MainNavigationState extends State<MainNavigation> {
     final activeTransfer = state.activeTransfer;
     final isWideScreen = MediaQuery.of(context).size.width >= 700;
 
-    if (isWideScreen) {
-      // Desktop / Tablet layout with NavigationRail
-      return Scaffold(
-        body: Row(
-          children: [
-            NavigationRail(
+    final content = isWideScreen
+        ? Scaffold(
+            body: Row(
+              children: [
+                NavigationRail(
+                  selectedIndex: _currentIndex,
+                  onDestinationSelected: (idx) {
+                    setState(() => _currentIndex = idx);
+                    state.selectedNavIndex = idx;
+                  },
+                  labelType: NavigationRailLabelType.all,
+                  leading: const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 20.0),
+                    child: Icon(Icons.sync_alt, size: 36, color: Colors.teal),
+                  ),
+                  destinations: [
+                    const NavigationRailDestination(
+                      icon: Icon(Icons.devices_outlined),
+                      selectedIcon: Icon(Icons.devices),
+                      label: Text('Geräte'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Badge(
+                        isLabelVisible: state.transfers.any((t) => t.status == TransferStatus.running),
+                        label: const Text('!'),
+                        child: const Icon(Icons.swap_vert_outlined),
+                      ),
+                      selectedIcon: const Icon(Icons.swap_vert),
+                      label: const Text('Transfers'),
+                    ),
+                    const NavigationRailDestination(
+                      icon: Icon(Icons.settings_outlined),
+                      selectedIcon: Icon(Icons.settings),
+                      label: Text('Einstellungen'),
+                    ),
+                  ],
+                ),
+                const VerticalDivider(thickness: 1, width: 1),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Expanded(child: _screens[_currentIndex]),
+                      if (activeTransfer != null && _currentIndex != 1)
+                        _buildActiveTransferBar(context, activeTransfer),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          )
+        : Scaffold(
+            body: Column(
+              children: [
+                Expanded(child: _screens[_currentIndex]),
+                if (activeTransfer != null && _currentIndex != 1)
+                  _buildActiveTransferBar(context, activeTransfer),
+              ],
+            ),
+            bottomNavigationBar: NavigationBar(
               selectedIndex: _currentIndex,
               onDestinationSelected: (idx) {
                 setState(() => _currentIndex = idx);
                 state.selectedNavIndex = idx;
               },
-              labelType: NavigationRailLabelType.all,
-              leading: const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20.0),
-                child: Icon(Icons.sync_alt, size: 36, color: Colors.teal),
-              ),
               destinations: [
-                const NavigationRailDestination(
+                const NavigationDestination(
                   icon: Icon(Icons.devices_outlined),
                   selectedIcon: Icon(Icons.devices),
-                  label: Text('Geräte'),
+                  label: 'Geräte',
                 ),
-                NavigationRailDestination(
+                NavigationDestination(
                   icon: Badge(
                     isLabelVisible: state.transfers.any((t) => t.status == TransferStatus.running),
                     label: const Text('!'),
                     child: const Icon(Icons.swap_vert_outlined),
                   ),
                   selectedIcon: const Icon(Icons.swap_vert),
-                  label: const Text('Transfers'),
+                  label: 'Transfers',
                 ),
-                const NavigationRailDestination(
+                const NavigationDestination(
                   icon: Icon(Icons.settings_outlined),
                   selectedIcon: Icon(Icons.settings),
-                  label: Text('Einstellungen'),
+                  label: 'Einstellungen',
                 ),
               ],
             ),
-            const VerticalDivider(thickness: 1, width: 1),
-            Expanded(
-              child: Column(
-                children: [
-                  Expanded(child: _screens[_currentIndex]),
-                  if (activeTransfer != null && _currentIndex != 1)
-                    _buildActiveTransferBar(context, activeTransfer),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+          );
 
-    // Mobile layout with NavigationBar
-    return Scaffold(
-      body: Column(
-        children: [
-          Expanded(child: _screens[_currentIndex]),
-          if (activeTransfer != null && _currentIndex != 1)
-            _buildActiveTransferBar(context, activeTransfer),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (idx) {
-          setState(() => _currentIndex = idx);
-          state.selectedNavIndex = idx;
-        },
-        destinations: [
-          const NavigationDestination(
-            icon: Icon(Icons.devices_outlined),
-            selectedIcon: Icon(Icons.devices),
-            label: 'Geräte',
-          ),
-          NavigationDestination(
-            icon: Badge(
-              isLabelVisible: state.transfers.any((t) => t.status == TransferStatus.running),
-              label: const Text('!'),
-              child: const Icon(Icons.swap_vert_outlined),
-            ),
-            selectedIcon: const Icon(Icons.swap_vert),
-            label: 'Transfers',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Einstellungen',
-          ),
-        ],
-      ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (Platform.isAndroid) {
+          try {
+            const MethodChannel('com.crossdrop.app/installer').invokeMethod('moveToBackground');
+          } catch (_) {}
+        }
+      },
+      child: content,
     );
   }
 }

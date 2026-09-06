@@ -14,9 +14,10 @@ cp "$SCRIPT_DIR/AndroidManifest.xml" app/src/main/AndroidManifest.xml
 mkdir -p app/src/main/res/xml
 cp "$SCRIPT_DIR/filepaths.xml" app/src/main/res/xml/filepaths.xml
 
-# Copy custom MainActivity with native package installer channel
+# Copy custom MainActivity and TransferForegroundService with native channels
 mkdir -p app/src/main/kotlin/com/crossdrop/crossdrop
 cp "$SCRIPT_DIR/MainActivity.kt" app/src/main/kotlin/com/crossdrop/crossdrop/MainActivity.kt
+cp "$SCRIPT_DIR/TransferForegroundService.kt" app/src/main/kotlin/com/crossdrop/crossdrop/TransferForegroundService.kt
 rm -f app/src/main/java/com/crossdrop/crossdrop/MainActivity.java || true
 
 # Copy permanent release keystore for reproducible APK signature

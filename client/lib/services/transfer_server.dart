@@ -17,6 +17,16 @@ class TransferServer {
   TransferProgressCallback? onProgress;
 
   final Map<String, TransferItem> _activeTransfers = {};
+  final Map<String, HttpRequest> _activeUploadRequests = {};
+  final Set<String> _cancelledTasks = {};
+
+  void cancelTransfer(String taskId) {
+    _cancelledTasks.add(taskId);
+    final req = _activeUploadRequests.remove(taskId);
+    try {
+      req?.response.close();
+    } catch (_) {}
+  }
 
   TransferServer(this._storage);
 
@@ -177,8 +187,14 @@ class TransferServer {
     int lastCheckBytes = 0;
     DateTime lastTime = DateTime.now();
 
+    _activeUploadRequests[taskId] = request;
+
     try {
       await for (final chunk in request) {
+        if (_cancelledTasks.contains(taskId)) {
+          break;
+        }
+
         sink.add(chunk);
         receivedBytes += chunk.length;
         item.bytesTransferred = receivedBytes;
@@ -199,6 +215,19 @@ class TransferServer {
 
       await sink.flush();
       await sink.close();
+
+      if (_cancelledTasks.contains(taskId) || (item.totalBytes > 0 && receivedBytes < item.totalBytes)) {
+        try {
+          if (await targetFile.exists()) await targetFile.delete();
+        } catch (_) {}
+        item.status = TransferStatus.cancelled;
+        item.errorMessage = _cancelledTasks.contains(taskId) ? 'Übertragung abgebrochen.' : 'Übertragung unvollständig oder abgebrochen.';
+        item.speedBytesPerSecond = 0;
+        onProgress?.call(item);
+        request.response.statusCode = HttpStatus.badRequest;
+        request.response.write(jsonEncode({'error': 'Transfer incomplete or cancelled'}));
+        return;
+      }
 
       // Verify SHA-256 if provided
       if (item.checksumSha256 != null && item.checksumSha256!.isNotEmpty) {
@@ -221,12 +250,26 @@ class TransferServer {
       request.response.statusCode = HttpStatus.ok;
       request.response.write(jsonEncode({'status': 'completed', 'path': finalPath}));
     } catch (e) {
-      item.status = TransferStatus.failed;
-      item.errorMessage = e.toString();
+      try {
+        await sink.close();
+      } catch (_) {}
+      if (_cancelledTasks.contains(taskId)) {
+        try {
+          if (await targetFile.exists()) await targetFile.delete();
+        } catch (_) {}
+        item.status = TransferStatus.cancelled;
+        item.errorMessage = 'Übertragung abgebrochen.';
+        item.speedBytesPerSecond = 0;
+      } else {
+        item.status = TransferStatus.failed;
+        item.errorMessage = e.toString();
+      }
       onProgress?.call(item);
       request.response.statusCode = HttpStatus.internalServerError;
       request.response.write(jsonEncode({'error': e.toString()}));
     } finally {
+      _activeUploadRequests.remove(taskId);
+      _cancelledTasks.remove(taskId);
       await request.response.close();
     }
   }

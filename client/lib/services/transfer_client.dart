@@ -11,7 +11,17 @@ typedef TransferClientProgressCallback = void Function(TransferItem item);
 
 class TransferClient {
   // High-performance chunk buffer: 64 KB (ensures smooth, real-time TCP flow control)
-  static const int _chunkSize = 64 * 1024;
+  static const int _chunkSize = 64 * 1024; // 64 KB chunks
+  static final Map<String, HttpClient> _activeSendClients = {};
+  static final Set<String> _cancelledTaskIds = {};
+
+  static void cancelTransfer(String taskId) {
+    _cancelledTaskIds.add(taskId);
+    final client = _activeSendClients.remove(taskId);
+    try {
+      client?.close(force: true);
+    } catch (_) {}
+  }
 
   static Future<void> sendFile({
     required File file,
@@ -184,6 +194,7 @@ class TransferClient {
     final client = HttpClient();
     client.idleTimeout = const Duration(seconds: 120);
     client.connectionTimeout = const Duration(seconds: 30);
+    _activeSendClients[taskId] = client;
 
     try {
       final request = await client.postUrl(uploadUri);
@@ -198,6 +209,10 @@ class TransferClient {
       final raf = await file.open(mode: FileMode.read);
       try {
         while (sentBytes < fileSize) {
+          if (_cancelledTaskIds.contains(taskId)) {
+            break;
+          }
+
           final toRead = (fileSize - sentBytes) > _chunkSize ? _chunkSize : (fileSize - sentBytes);
           final chunk = await raf.read(toRead);
           if (chunk.isEmpty) break;
@@ -225,6 +240,15 @@ class TransferClient {
         await raf.close();
       }
 
+      if (_cancelledTaskIds.contains(taskId)) {
+        client.close(force: true);
+        item.status = TransferStatus.cancelled;
+        item.errorMessage = 'Übertragung abgebrochen.';
+        item.speedBytesPerSecond = 0;
+        onProgress(item);
+        return;
+      }
+
       item.bytesTransferred = (fileSize * 0.98).round();
       item.errorMessage = 'Empfänger schließt Speicherung ab...';
       onProgress(item);
@@ -232,6 +256,14 @@ class TransferClient {
       final response = await request.close();
       final responseBody = await response.transform(utf8.decoder).join();
       client.close();
+
+      if (_cancelledTaskIds.contains(taskId)) {
+        item.status = TransferStatus.cancelled;
+        item.errorMessage = 'Übertragung abgebrochen.';
+        item.speedBytesPerSecond = 0;
+        onProgress(item);
+        return;
+      }
 
       if (response.statusCode == 200) {
         item.status = TransferStatus.completed;
@@ -245,10 +277,19 @@ class TransferClient {
         onProgress(item);
       }
     } catch (e) {
-      client.close();
-      item.status = TransferStatus.failed;
-      item.errorMessage = 'Fehler bei Direktübertragung: $e';
+      client.close(force: true);
+      if (_cancelledTaskIds.contains(taskId)) {
+        item.status = TransferStatus.cancelled;
+        item.errorMessage = 'Übertragung abgebrochen.';
+        item.speedBytesPerSecond = 0;
+      } else {
+        item.status = TransferStatus.failed;
+        item.errorMessage = 'Fehler bei Direktübertragung: $e';
+      }
       onProgress(item);
+    } finally {
+      _activeSendClients.remove(taskId);
+      _cancelledTaskIds.remove(taskId);
     }
   }
 
@@ -302,6 +343,7 @@ class TransferClient {
     final client = HttpClient();
     client.idleTimeout = const Duration(seconds: 120);
     client.connectionTimeout = const Duration(seconds: 30);
+    _activeSendClients[taskId] = client;
 
     try {
       final request = await client.postUrl(uploadUri);
@@ -319,6 +361,10 @@ class TransferClient {
       final raf = await file.open(mode: FileMode.read);
       try {
         while (sentBytes < fileSize) {
+          if (_cancelledTaskIds.contains(taskId)) {
+            break;
+          }
+
           final toRead = (fileSize - sentBytes) > _chunkSize ? _chunkSize : (fileSize - sentBytes);
           final chunk = await raf.read(toRead);
           if (chunk.isEmpty) break;
@@ -348,6 +394,15 @@ class TransferClient {
         await raf.close();
       }
 
+      if (_cancelledTaskIds.contains(taskId)) {
+        client.close(force: true);
+        item.status = TransferStatus.cancelled;
+        item.errorMessage = 'Übertragung abgebrochen.';
+        item.speedBytesPerSecond = 0;
+        onProgress(item);
+        return;
+      }
+
       item.bytesTransferred = (fileSize * 0.98).round();
       item.errorMessage = 'Empfänger schließt Speicherung ab...';
       onProgress(item);
@@ -355,6 +410,14 @@ class TransferClient {
       final response = await request.close();
       final responseBody = await response.transform(utf8.decoder).join();
       client.close();
+
+      if (_cancelledTaskIds.contains(taskId)) {
+        item.status = TransferStatus.cancelled;
+        item.errorMessage = 'Übertragung abgebrochen.';
+        item.speedBytesPerSecond = 0;
+        onProgress(item);
+        return;
+      }
 
       if (response.statusCode == 200) {
         item.status = TransferStatus.completed;
@@ -368,10 +431,19 @@ class TransferClient {
         onProgress(item);
       }
     } catch (e) {
-      client.close();
-      item.status = TransferStatus.failed;
-      item.errorMessage = 'Relay-Verbindungsfehler: $e';
+      client.close(force: true);
+      if (_cancelledTaskIds.contains(taskId)) {
+        item.status = TransferStatus.cancelled;
+        item.errorMessage = 'Übertragung abgebrochen.';
+        item.speedBytesPerSecond = 0;
+      } else {
+        item.status = TransferStatus.failed;
+        item.errorMessage = 'Relay-Verbindungsfehler: $e';
+      }
       onProgress(item);
+    } finally {
+      _activeSendClients.remove(taskId);
+      _cancelledTaskIds.remove(taskId);
     }
   }
 }

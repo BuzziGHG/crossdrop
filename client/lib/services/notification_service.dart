@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -7,6 +8,9 @@ class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
   NotificationService._internal();
+
+  static const _installerChannel = MethodChannel('com.crossdrop.app/installer');
+  bool _foregroundServiceActive = false;
 
   final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
   bool _initialized = false;
@@ -89,6 +93,26 @@ class NotificationService {
     final etaText = eta.isNotEmpty ? ' • $eta' : '';
     final body = '$progressPercent% • $speed$etaText';
 
+    if (Platform.isAndroid) {
+      try {
+        if (!_foregroundServiceActive) {
+          _foregroundServiceActive = true;
+          _installerChannel.invokeMethod('startForegroundService', {
+            'title': title,
+            'content': body,
+          });
+        } else {
+          _installerChannel.invokeMethod('updateForegroundProgress', {
+            'title': title,
+            'content': body,
+            'progress': progressPercent.clamp(0, 100),
+          });
+        }
+      } catch (e) {
+        debugPrint('Foreground service error: $e');
+      }
+    }
+
     final androidDetails = AndroidNotificationDetails(
       channelId,
       channelName,
@@ -116,6 +140,15 @@ class NotificationService {
     }
   }
 
+  Future<void> stopForegroundService() async {
+    if (Platform.isAndroid && _foregroundServiceActive) {
+      _foregroundServiceActive = false;
+      try {
+        await _installerChannel.invokeMethod('stopForegroundService');
+      } catch (_) {}
+    }
+  }
+
   Future<void> showTransferCompleted({
     required String taskId,
     required String filename,
@@ -124,9 +157,12 @@ class NotificationService {
     _lastReportedProgress.remove(taskId);
     _lastUpdateTime.remove(taskId);
 
-    try {
-      await WakelockPlus.disable();
-    } catch (_) {}
+    if (_lastReportedProgress.isEmpty) {
+      await stopForegroundService();
+      try {
+        await WakelockPlus.disable();
+      } catch (_) {}
+    }
 
     if (!_initialized) return;
     if (kIsWeb || (!Platform.isAndroid && !Platform.isLinux)) return;
@@ -167,9 +203,12 @@ class NotificationService {
     _lastReportedProgress.remove(taskId);
     _lastUpdateTime.remove(taskId);
 
-    try {
-      await WakelockPlus.disable();
-    } catch (_) {}
+    if (_lastReportedProgress.isEmpty) {
+      await stopForegroundService();
+      try {
+        await WakelockPlus.disable();
+      } catch (_) {}
+    }
 
     if (!_initialized) return;
     if (kIsWeb || (!Platform.isAndroid && !Platform.isLinux)) return;
@@ -205,6 +244,12 @@ class NotificationService {
   Future<void> cancel(String taskId) async {
     _lastReportedProgress.remove(taskId);
     _lastUpdateTime.remove(taskId);
+    if (_lastReportedProgress.isEmpty) {
+      await stopForegroundService();
+      try {
+        await WakelockPlus.disable();
+      } catch (_) {}
+    }
     try {
       await _notifications.cancel(_getNotificationId(taskId));
     } catch (_) {}

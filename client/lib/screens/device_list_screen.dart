@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/device.dart';
+import '../models/transfer_item.dart';
 import '../services/app_state.dart';
 import 'send_file_screen.dart';
 
@@ -161,7 +162,87 @@ class DeviceListScreen extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
+
+            // Active Transfer Banner (if sending or receiving)
+            if (state.activeTransfer != null) ...[
+              Card(
+                elevation: 3,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                color: theme.colorScheme.primaryContainer.withOpacity(0.35),
+                child: Padding(
+                  padding: const EdgeInsets.all(14.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2.5),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              state.activeTransfer!.direction == TransferDirection.send
+                                  ? 'Sende: ${state.activeTransfer!.filename}'
+                                  : 'Empfange: ${state.activeTransfer!.filename}',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              side: const BorderSide(color: Colors.red),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              visualDensity: VisualDensity.compact,
+                            ),
+                            icon: const Icon(Icons.cancel_outlined, size: 16),
+                            label: const Text('Abbrechen'),
+                            onPressed: () {
+                              state.cancelTransfer(state.activeTransfer!.id);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Übertragung wird abgebrochen...')),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: state.activeTransfer!.progress > 0 ? state.activeTransfer!.progress : null,
+                          minHeight: 6,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '${(state.activeTransfer!.progress * 100).toStringAsFixed(1)}% (${state.activeTransfer!.formattedTransferred} / ${state.activeTransfer!.formattedSize})',
+                            style: theme.textTheme.bodySmall?.copyWith(fontSize: 11),
+                          ),
+                          Text(
+                            state.activeTransfer!.formattedSpeed,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
 
             // 2. Section Header
             Row(

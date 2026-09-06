@@ -18,6 +18,7 @@ class TransfersScreen extends StatelessWidget {
       case TransferStatus.rejected:
         return Colors.red;
       case TransferStatus.pending:
+      case TransferStatus.cancelled:
         return Colors.orange;
     }
   }
@@ -36,6 +37,8 @@ class TransfersScreen extends StatelessWidget {
         return 'Fehlgeschlagen';
       case TransferStatus.rejected:
         return 'Abgelehnt';
+      case TransferStatus.cancelled:
+        return 'Abgebrochen';
     }
   }
 
@@ -238,7 +241,36 @@ class TransfersScreen extends StatelessWidget {
                           const SizedBox(height: 6),
                           Text(
                             item.errorMessage!,
-                            style: const TextStyle(color: Colors.red, fontSize: 12),
+                            style: TextStyle(
+                              color: item.status == TransferStatus.cancelled ? Colors.orange : Colors.red,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+
+                        // Abbrechen button for active or pending transfers
+                        if (item.status == TransferStatus.running ||
+                            item.status == TransferStatus.connecting ||
+                            item.status == TransferStatus.pending) ...[
+                          const SizedBox(height: 10),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: Colors.red,
+                                side: const BorderSide(color: Colors.red),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                visualDensity: VisualDensity.compact,
+                              ),
+                              icon: const Icon(Icons.cancel_outlined, size: 16),
+                              label: const Text('Abbrechen'),
+                              onPressed: () {
+                                state.cancelTransfer(item.id);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Übertragung wird abgebrochen...')),
+                                );
+                              },
+                            ),
                           ),
                         ],
 

@@ -1,4 +1,4 @@
-﻿package com.crossdrop.crossdrop
+package com.crossdrop.crossdrop
 
 import android.content.Intent
 import android.net.Uri
@@ -83,6 +83,43 @@ class MainActivity: FlutterActivity() {
                         result.success(true)
                     } catch (e: Exception) {
                         result.error("INSTALL_ERROR", e.message, null)
+                    }
+                }
+                "moveToBackground" -> {
+                    try {
+                        moveTaskToBack(true)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("MOVE_FAILED", e.message, null)
+                    }
+                }
+                "startForegroundService" -> {
+                    val title = call.argument<String>("title") ?: "CrossDrop Dateiübertragung"
+                    val content = call.argument<String>("content") ?: "Übertragung läuft im Hintergrund..."
+                    try {
+                        TransferForegroundService.startService(applicationContext, title, content)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SERVICE_START_FAILED", e.message, null)
+                    }
+                }
+                "updateForegroundProgress" -> {
+                    val title = call.argument<String>("title") ?: "CrossDrop Dateiübertragung"
+                    val content = call.argument<String>("content") ?: "Wird übertragen..."
+                    val progress = call.argument<Int>("progress") ?: -1
+                    try {
+                        TransferForegroundService.updateProgress(applicationContext, title, content, progress)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SERVICE_UPDATE_FAILED", e.message, null)
+                    }
+                }
+                "stopForegroundService" -> {
+                    try {
+                        TransferForegroundService.stopService(applicationContext)
+                        result.success(true)
+                    } catch (e: Exception) {
+                        result.error("SERVICE_STOP_FAILED", e.message, null)
                     }
                 }
                 else -> result.notImplemented()

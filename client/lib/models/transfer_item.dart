@@ -1,4 +1,4 @@
-enum TransferStatus { pending, connecting, running, completed, failed, rejected }
+enum TransferStatus { pending, connecting, running, completed, failed, rejected, cancelled }
 enum TransferDirection { send, receive }
 
 class TransferItem {

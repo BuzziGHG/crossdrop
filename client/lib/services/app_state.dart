@@ -40,8 +40,50 @@ class AppState extends ChangeNotifier {
   TransferItem? pendingApprovalItem;
   Completer<bool>? _approvalCompleter;
 
-  // Active send task tracking
+  // Active send and download task tracking
   String? activeSendingTaskId;
+  final Map<String, HttpClient> _activeDownloads = {};
+  final Set<String> _cancelledDownloads = {};
+
+  void cancelTransfer(String taskId) {
+    _cancelledDownloads.add(taskId);
+
+    // 1. Cancel active outgoing send if this task is sending
+    TransferClient.cancelTransfer(taskId);
+
+    // 2. Cancel active incoming local server upload
+    server.cancelTransfer(taskId);
+
+    // 3. Cancel active incoming relay download if this task is downloading
+    final downloadClient = _activeDownloads.remove(taskId);
+    try {
+      downloadClient?.close(force: true);
+    } catch (_) {}
+
+    // 3. Mark transfer as cancelled locally
+    final transfer = transfers.where((t) => t.id == taskId).firstOrNull;
+    if (transfer != null) {
+      transfer.status = TransferStatus.cancelled;
+      transfer.errorMessage = 'Übertragung durch Benutzer abgebrochen.';
+      transfer.speedBytesPerSecond = 0;
+      _handleTransferProgress(transfer);
+
+      // Signal cancellation to peer via WebSocket tunnel if connected
+      if (vpnTunnel.isConnected && transfer.peerDeviceId != null && transfer.peerDeviceId!.isNotEmpty) {
+        vpnTunnel.sendThroughTunnel({
+          'type': 'transfer_cancelled',
+          'task_id': taskId,
+          'target_device_id': transfer.peerDeviceId,
+        });
+      }
+    }
+
+    if (activeSendingTaskId == taskId) {
+      activeSendingTaskId = null;
+    }
+    NotificationService().cancel(taskId);
+    notifyListeners();
+  }
 
   // Tab navigation state
   int selectedNavIndex = 0;
@@ -306,11 +348,40 @@ class AppState extends ChangeNotifier {
         filename: item.filename,
         reason: item.errorMessage ?? (item.status == TransferStatus.rejected ? 'Abgelehnt' : 'Fehlgeschlagen'),
       );
+    } else if (item.status == TransferStatus.cancelled) {
+      NotificationService().cancel(item.id);
     }
   }
 
   Future<void> _handleTunnelData(Map<String, dynamic> data) async {
     final type = data['type'];
+    if (type == 'transfer_cancelled') {
+      final taskId = data['task_id'];
+      if (taskId != null) {
+        _cancelledDownloads.add(taskId);
+        TransferClient.cancelTransfer(taskId);
+        server.cancelTransfer(taskId);
+        final downloadClient = _activeDownloads.remove(taskId);
+        try {
+          downloadClient?.close(force: true);
+        } catch (_) {}
+
+        final transfer = transfers.where((t) => t.id == taskId).firstOrNull;
+        if (transfer != null) {
+          transfer.status = TransferStatus.cancelled;
+          transfer.errorMessage = 'Übertragung vom Partner abgebrochen.';
+          transfer.speedBytesPerSecond = 0;
+          _handleTransferProgress(transfer);
+        }
+        if (activeSendingTaskId == taskId) {
+          activeSendingTaskId = null;
+        }
+        NotificationService().cancel(taskId);
+        notifyListeners();
+      }
+      return;
+    }
+
     if (type == 'relay_finished') {
       final taskId = data['task_id'];
       final transfer = transfers.where((t) => t.id == taskId).firstOrNull;
@@ -426,6 +497,8 @@ class AppState extends ChangeNotifier {
     final client = HttpClient();
     client.idleTimeout = const Duration(seconds: 120);
     client.connectionTimeout = const Duration(seconds: 30);
+    _activeDownloads[taskId] = client;
+
     try {
       item.errorMessage = 'Streaming von Sender läuft...';
       _handleTransferProgress(item);
@@ -450,6 +523,10 @@ class AppState extends ChangeNotifier {
       DateTime lastTime = DateTime.now();
 
       await for (final chunk in response) {
+        if (_cancelledDownloads.contains(taskId)) {
+          break;
+        }
+
         sink.add(chunk);
         receivedBytes += chunk.length;
 
@@ -473,6 +550,17 @@ class AppState extends ChangeNotifier {
 
       await sink.flush();
       await sink.close();
+
+      if (_cancelledDownloads.contains(taskId)) {
+        try {
+          if (await targetFile.exists()) await targetFile.delete();
+        } catch (_) {}
+        item.status = TransferStatus.cancelled;
+        item.errorMessage = 'Übertragung abgebrochen.';
+        item.speedBytesPerSecond = 0;
+        _handleTransferProgress(item);
+        return;
+      }
 
       if (item.totalBytes > 0 && receivedBytes < item.totalBytes) {
         try {
@@ -504,10 +592,21 @@ class AppState extends ChangeNotifier {
       try {
         await sink.close();
       } catch (_) {}
-      item.status = TransferStatus.failed;
-      item.errorMessage = 'Download-Fehler: $e';
+      if (_cancelledDownloads.contains(taskId)) {
+        try {
+          if (await targetFile.exists()) await targetFile.delete();
+        } catch (_) {}
+        item.status = TransferStatus.cancelled;
+        item.errorMessage = 'Übertragung abgebrochen.';
+        item.speedBytesPerSecond = 0;
+      } else {
+        item.status = TransferStatus.failed;
+        item.errorMessage = 'Download-Fehler: $e';
+      }
       _handleTransferProgress(item);
     } finally {
+      _activeDownloads.remove(taskId);
+      _cancelledDownloads.remove(taskId);
       client.close();
     }
   }

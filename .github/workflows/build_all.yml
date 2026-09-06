@@ -216,11 +216,12 @@ jobs:
             ## 🚀 Großes Update ${{ steps.release_version.outputs.tag }}
 
             ### ✨ Neue Highlights & Funktionen:
-            - 📧 **Cross-Account Transfer via E-Mail:** Senden Sie Dateien direkt an andere registrierte CrossDrop-Accounts durch Eingabe der E-Mail-Adresse!
-            - 🛡️ **Obligatorische Empfänger-Bestätigung:** Der Empfänger muss eingehende Dateien fremder Accounts immer explizit im Bestätigungsdialog annehmen, bevor der Download startet.
-            - 🌐 **Automatisches VPN Server-Relay:** Sichere und firewall-durchdringende Übertragung über das VPN-Relay auch zwischen verschiedenen Netzwerken und Mobilfunk.
-            - 📊 **Synchronisierte Live-Fortschrittsanzeige:** Beide Geräte zeigen in Echtzeit denselben synchronisierten Übertragungsfortschritt, Geschwindigkeit und Restzeit (ETA).
-            - 🔒 **Direkte Zielgeräte-Fixierung:** Keine doppelte Geräteauswahl mehr nach dem Antippen eines Geräts.
+            - 📱 **Android Hintergrund-Service & Verbindungsstabilität (WakeLock & WifiLock):** Datenübertragungen brechen auf Android beim Wechsel in eine andere App, beim Ausschalten des Bildschirms oder beim Verlassen der App nicht mehr ab! Native Registrierung als `TransferForegroundService` mit `foregroundServiceType="dataSync"`.
+            - 🛑 **Plattformübergreifendes Abbrechen von Dateiübertragungen:** Neue, sofortige **"Abbrechen"**-Buttons in der Übertragungsliste, im Senden-Dialog und im Dashboard-Banner auf allen Plattformen (Windows, Linux, Android) mit Socket-Abbruch und Bereinigung temporärer Dateien.
+            - 🔙 **Android Zurück-Taste minimiert sicher (`moveTaskToBack`),** ohne den laufenden Flutter-Engine-Prozess oder Socket-Streams zu beenden.
+            - 📱 **Android In-App Update & Paket-Installer:** Zuverlässiger nativer Paket-Installer (`ACTION_VIEW`) mit FileProvider und Berechtigungsprüfung.
+            - 💾 **Zero-Disk In-Memory Streaming Relay:** Dateien werden nicht mehr auf der Festplatte des Servers zwischengespeichert (0 Byte Disk-Usage im Server-RAM).
+            - 📊 **100 % synchrone Live-Fortschrittsanzeige:** Beide Geräte zeigen in Echtzeit denselben synchronisierten Übertragungsfortschritt, Geschwindigkeit und Restzeit (ETA).
 
             ### 📦 Fertige Downloads:
             - 🪟 **Windows Setup-Installer (.exe):** `CrossDrop-Windows-Setup.exe` (Empfohlen: Installation mit Desktop- & Startmenü-Verknüpfung)
