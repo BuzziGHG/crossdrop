@@ -214,6 +214,7 @@ class _SendFileScreenState extends State<SendFileScreen> {
               localIps: [],
               vpnIps: [],
               isOnline: true,
+              lastSeen: DateTime.now(),
             ),
             mode: ConnectionMode.vpn,
             isCrossAccount: true,
