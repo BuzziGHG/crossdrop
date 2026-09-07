@@ -10,12 +10,18 @@ class CloudAccount {
   final String id;
   final String name;
   final CloudProviderType type;
-  final String serverUrl; // IP or domain, e.g. 192.168.178.50:8080 or https://cloud.example.com
-  final String username;
-  final String password; // Password or App-Token
-  final String remoteBasePath; // e.g. /CrossDrop or /
+  final String serverUrl; // IP or domain for WebDAV, or 'https://www.googleapis.com' for Google Drive
+  final String username; // Username for WebDAV, or Google Account Email
+  final String password; // Password/App-Token for WebDAV
+  final String remoteBasePath; // e.g. /CrossDrop or / or 'root' for Google Drive
   final bool autoSync;
   final DateTime? lastSyncTime;
+
+  // Google Drive specific fields
+  final String? accessToken;
+  final String? refreshToken;
+  final String? clientId;
+  final DateTime? tokenExpiry;
 
   CloudAccount({
     required this.id,
@@ -27,13 +33,16 @@ class CloudAccount {
     this.remoteBasePath = '/',
     this.autoSync = false,
     this.lastSyncTime,
+    this.accessToken,
+    this.refreshToken,
+    this.clientId,
+    this.tokenExpiry,
   });
 
   /// Normalize server URL into proper WebDAV endpoint for Nextcloud / WebDAV
   String get normalizedWebDavUrl {
     var base = serverUrl.trim();
     if (!base.startsWith('http://') && !base.startsWith('https://')) {
-      // Default to http for local IPs or https for domains
       if (RegExp(r'^\d+\.\d+\.\d+\.\d+').hasMatch(base) || base.contains('localhost')) {
         base = 'http://$base';
       } else {
@@ -62,12 +71,16 @@ class CloudAccount {
         'remoteBasePath': remoteBasePath,
         'autoSync': autoSync,
         'lastSyncTime': lastSyncTime?.toIso8601String(),
+        'accessToken': accessToken,
+        'refreshToken': refreshToken,
+        'clientId': clientId,
+        'tokenExpiry': tokenExpiry?.toIso8601String(),
       };
 
   factory CloudAccount.fromJson(Map<String, dynamic> json) {
     return CloudAccount(
       id: json['id'] as String,
-      name: json['name'] as String? ?? 'Nextcloud',
+      name: json['name'] as String? ?? 'Cloud',
       type: CloudProviderType.values.firstWhere(
         (t) => t.name == json['type'],
         orElse: () => CloudProviderType.nextcloud,
@@ -79,6 +92,12 @@ class CloudAccount {
       autoSync: json['autoSync'] as bool? ?? false,
       lastSyncTime: json['lastSyncTime'] != null
           ? DateTime.tryParse(json['lastSyncTime'] as String)
+          : null,
+      accessToken: json['accessToken'] as String?,
+      refreshToken: json['refreshToken'] as String?,
+      clientId: json['clientId'] as String?,
+      tokenExpiry: json['tokenExpiry'] != null
+          ? DateTime.tryParse(json['tokenExpiry'] as String)
           : null,
     );
   }
@@ -92,6 +111,10 @@ class CloudAccount {
     String? remoteBasePath,
     bool? autoSync,
     DateTime? lastSyncTime,
+    String? accessToken,
+    String? refreshToken,
+    String? clientId,
+    DateTime? tokenExpiry,
   }) {
     return CloudAccount(
       id: id,
@@ -103,6 +126,10 @@ class CloudAccount {
       remoteBasePath: remoteBasePath ?? this.remoteBasePath,
       autoSync: autoSync ?? this.autoSync,
       lastSyncTime: lastSyncTime ?? this.lastSyncTime,
+      accessToken: accessToken ?? this.accessToken,
+      refreshToken: refreshToken ?? this.refreshToken,
+      clientId: clientId ?? this.clientId,
+      tokenExpiry: tokenExpiry ?? this.tokenExpiry,
     );
   }
 }

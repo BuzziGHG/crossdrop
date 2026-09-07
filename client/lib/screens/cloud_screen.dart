@@ -1,6 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:open_filex/open_filex.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +12,7 @@ import 'package:uuid/uuid.dart';
 import '../models/cloud_account.dart';
 import '../services/app_state.dart';
 import '../services/cloud_service.dart';
+import 'send_file_screen.dart';
 
 class CloudScreen extends StatefulWidget {
   const CloudScreen({super.key});
@@ -67,14 +72,16 @@ class _CloudScreenState extends State<CloudScreen> {
     }
   }
 
-  void _navigateInto(String folderName) {
-    var next = _currentRemotePath;
-    if (!next.endsWith('/')) next = '$next/';
-    next = '$next$folderName';
-    setState(() {
-      _currentRemotePath = next;
-    });
-    _loadFiles();
+  void _navigateInto(CloudFileItem item) {
+    if (item.isDirectory) {
+      var next = _currentRemotePath;
+      if (!next.endsWith('/')) next = '$next/';
+      next = '$next${item.name}';
+      setState(() {
+        _currentRemotePath = next;
+      });
+      _loadFiles();
+    }
   }
 
   void _navigateUp() {
@@ -93,11 +100,7 @@ class _CloudScreenState extends State<CloudScreen> {
     _loadFiles();
   }
 
-  Future<void> _downloadFile(CloudFileItem item) async {
-    final state = Provider.of<AppState>(context, listen: false);
-    final account = state.activeCloudAccount;
-    if (account == null) return;
-
+  Future<String> _getLocalSavePath(String filename) async {
     String downloadDir;
     try {
       if (Platform.isAndroid) {
@@ -110,8 +113,15 @@ class _CloudScreenState extends State<CloudScreen> {
     } catch (_) {
       downloadDir = (await getApplicationDocumentsDirectory()).path;
     }
+    return p.join(downloadDir, filename);
+  }
 
-    final localPath = p.join(downloadDir, item.name);
+  Future<File?> _downloadFile(CloudFileItem item, {bool openAfterDownload = false}) async {
+    final state = Provider.of<AppState>(context, listen: false);
+    final account = state.activeCloudAccount;
+    if (account == null) return null;
+
+    final localPath = await _getLocalSavePath(item.name);
 
     setState(() {
       _downloadProgress[item.path] = 0.01;
@@ -131,21 +141,35 @@ class _CloudScreenState extends State<CloudScreen> {
         },
       );
 
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Heruntergeladen: ${item.name}'),
-          backgroundColor: Colors.green,
-        ),
-      );
+      final file = File(localPath);
+
+      if (!mounted) return file;
+
+      if (openAfterDownload) {
+        await OpenFilex.open(localPath);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Heruntergeladen: ${item.name}'),
+            backgroundColor: Colors.green,
+            action: SnackBarAction(
+              label: 'Öffnen',
+              textColor: Colors.white,
+              onPressed: () => OpenFilex.open(localPath),
+            ),
+          ),
+        );
+      }
+      return file;
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return null;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Fehler beim Download: $e'),
           backgroundColor: Colors.red,
         ),
       );
+      return null;
     } finally {
       if (mounted) {
         setState(() {
@@ -154,6 +178,265 @@ class _CloudScreenState extends State<CloudScreen> {
       }
     }
   }
+
+  // ==========================================
+  // In-App File Viewers & Previews
+  // ==========================================
+
+  void _openOrPreviewFile(CloudFileItem item) {
+    if (item.isDirectory) {
+      _navigateInto(item);
+    } else if (item.isImage) {
+      _showImagePreviewDialog(item);
+    } else if (item.isText) {
+      _showTextPreviewDialog(item);
+    } else {
+      // PDF or other documents -> download and open with system viewer
+      _downloadFile(item, openAfterDownload: true);
+    }
+  }
+
+  Future<void> _showImagePreviewDialog(CloudFileItem item) async {
+    final state = Provider.of<AppState>(context, listen: false);
+    final account = state.activeCloudAccount;
+    if (account == null) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              backgroundColor: Colors.black.withOpacity(0.92),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header Bar
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      color: Colors.black87,
+                      child: Row(
+                        children: [
+                          const Icon(Icons.image, color: Colors.tealAccent, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.name,
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  item.formattedSize,
+                                  style: const TextStyle(color: Colors.grey, fontSize: 11),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.download_rounded, color: Colors.white),
+                            tooltip: 'Herunterladen',
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              _downloadFile(item);
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, color: Colors.white),
+                            tooltip: 'Schließen',
+                            onPressed: () => Navigator.pop(ctx),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Image Viewer Container
+                    Flexible(
+                      child: Container(
+                        constraints: BoxConstraints(
+                          maxHeight: MediaQuery.of(context).size.height * 0.7,
+                          maxWidth: MediaQuery.of(context).size.width * 0.9,
+                        ),
+                        child: FutureBuilder<Uint8List>(
+                          future: _cloudService.getFileBytes(account, item.path),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(40.0),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      CircularProgressIndicator(color: Colors.tealAccent),
+                                      SizedBox(height: 16),
+                                      Text('Bild wird geladen...', style: TextStyle(color: Colors.white70)),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }
+                            if (snapshot.hasError) {
+                              return Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24.0),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.broken_image, color: Colors.redAccent, size: 48),
+                                      const SizedBox(height: 12),
+                                      Text('Fehler beim Laden: ${snapshot.error}', style: const TextStyle(color: Colors.white70)),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }
+                            final bytes = snapshot.data!;
+                            return InteractiveViewer(
+                              minScale: 0.5,
+                              maxScale: 4.0,
+                              child: Image.memory(
+                                bytes,
+                                fit: BoxFit.contain,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _showTextPreviewDialog(CloudFileItem item) async {
+    final state = Provider.of<AppState>(context, listen: false);
+    final account = state.activeCloudAccount;
+    if (account == null) return;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return Dialog(
+          insetPadding: const EdgeInsets.all(16),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AppBar(
+                  title: Text(item.name, style: const TextStyle(fontSize: 16)),
+                  automaticallyImplyLeading: false,
+                  actions: [
+                    IconButton(
+                      icon: const Icon(Icons.download_rounded),
+                      tooltip: 'Herunterladen',
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _downloadFile(item);
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+                Flexible(
+                  child: Container(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.7,
+                    ),
+                    padding: const EdgeInsets.all(16),
+                    child: FutureBuilder<Uint8List>(
+                      future: _cloudService.getFileBytes(account, item.path),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
+                        if (snapshot.hasError) {
+                          return Center(child: Text('Fehler: ${snapshot.error}'));
+                        }
+                        final text = utf8.decode(snapshot.data!, allowMalformed: true);
+                        return SingleChildScrollView(
+                          child: SelectableText(
+                            text,
+                            style: const TextStyle(fontFamily: 'monospace', fontSize: 13, height: 1.4),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _shareFileToDevice(CloudFileItem item) async {
+    final downloaded = await _downloadFile(item);
+    if (downloaded != null && mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SendFileScreen(preselectedFile: downloaded),
+        ),
+      );
+    }
+  }
+
+  Future<void> _deleteItemDialog(CloudFileItem item) async {
+    final state = Provider.of<AppState>(context, listen: false);
+    final account = state.activeCloudAccount;
+    if (account == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('${item.isDirectory ? 'Ordner' : 'Datei'} löschen?'),
+        content: Text('Möchten Sie "${item.name}" wirklich aus der Cloud löschen?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final success = await _cloudService.deleteItem(account, item.path);
+      if (!mounted) return;
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('"${item.name}" gelöscht.')),
+        );
+        _loadFiles();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Fehler beim Löschen.'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  // ==========================================
+  // Cloud Actions (Upload & Create Folder)
+  // ==========================================
 
   Future<void> _uploadFilesToCurrentDirectory() async {
     final state = Provider.of<AppState>(context, listen: false);
@@ -241,14 +524,20 @@ class _CloudScreenState extends State<CloudScreen> {
     }
   }
 
+  // ==========================================
+  // Add / Edit Account Dialog (Nextcloud & Google Drive)
+  // ==========================================
+
   Future<void> _showAddAccountDialog({CloudAccount? editAccount}) async {
     final state = Provider.of<AppState>(context, listen: false);
 
+    CloudProviderType selectedType = editAccount?.type ?? CloudProviderType.nextcloud;
     final nameController = TextEditingController(text: editAccount?.name ?? 'Nextcloud');
     final urlController = TextEditingController(text: editAccount?.serverUrl ?? '');
     final userController = TextEditingController(text: editAccount?.username ?? '');
     final passController = TextEditingController(text: editAccount?.password ?? '');
     final pathController = TextEditingController(text: editAccount?.remoteBasePath ?? '/');
+    final tokenController = TextEditingController(text: editAccount?.accessToken ?? '');
 
     bool isTesting = false;
     Map<String, dynamic>? testResult;
@@ -264,50 +553,142 @@ class _CloudScreenState extends State<CloudScreen> {
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // Provider Selector
+                    SegmentedButton<CloudProviderType>(
+                      segments: const [
+                        ButtonSegment(
+                          value: CloudProviderType.nextcloud,
+                          icon: Icon(Icons.cloud_outlined),
+                          label: Text('Nextcloud'),
+                        ),
+                        ButtonSegment(
+                          value: CloudProviderType.googleDrive,
+                          icon: Icon(Icons.add_to_drive),
+                          label: Text('Google Drive'),
+                        ),
+                        ButtonSegment(
+                          value: CloudProviderType.webdav,
+                          icon: Icon(Icons.dns_outlined),
+                          label: Text('WebDAV'),
+                        ),
+                      ],
+                      selected: {selectedType},
+                      onSelectionChanged: (Set<CloudProviderType> newSelection) {
+                        setDialogState(() {
+                          selectedType = newSelection.first;
+                          if (selectedType == CloudProviderType.googleDrive && nameController.text == 'Nextcloud') {
+                            nameController.text = 'Google Drive';
+                          } else if (selectedType == CloudProviderType.nextcloud && nameController.text == 'Google Drive') {
+                            nameController.text = 'Nextcloud';
+                          }
+                          testResult = null;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
                     TextField(
                       controller: nameController,
                       decoration: const InputDecoration(
                         labelText: 'Bezeichnung',
-                        hintText: 'z.B. Nextcloud Privat',
+                        hintText: 'z.B. Meine Cloud',
                         prefixIcon: Icon(Icons.label_outline),
+                        border: OutlineInputBorder(),
                       ),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: urlController,
-                      decoration: const InputDecoration(
-                        labelText: 'Server-Adresse (IP oder Domain)',
-                        hintText: 'z.B. 192.168.178.50 oder cloud.meinedomain.de',
-                        prefixIcon: Icon(Icons.dns_outlined),
+
+                    if (selectedType == CloudProviderType.googleDrive) ...[
+                      // Google Drive Configuration
+                      TextField(
+                        controller: userController,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          labelText: 'Google E-Mail-Adresse',
+                          hintText: 'z.B. meinaccount@gmail.com',
+                          prefixIcon: Icon(Icons.mail_outline),
+                          border: OutlineInputBorder(),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: userController,
-                      decoration: const InputDecoration(
-                        labelText: 'Benutzername',
-                        prefixIcon: Icon(Icons.person_outline),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: tokenController,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Google OAuth Access Token',
+                          hintText: 'ya29.a0...',
+                          prefixIcon: Icon(Icons.key),
+                          border: OutlineInputBorder(),
+                          helperText: 'Token mit Google Drive Scope (drive.file / drive.readonly)',
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: passController,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Passwort oder App-Token',
-                        prefixIcon: Icon(Icons.lock_outline),
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.blue.withOpacity(0.25)),
+                        ),
+                        child: const Row(
+                          children: [
+                            Icon(Icons.info_outline, color: Colors.blue, size: 20),
+                            SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Verbinden Sie Ihr Google-Konto direkt über Ihren Google OAuth-Token für nativen Zugriff auf Google Drive.',
+                                style: TextStyle(fontSize: 12, height: 1.3),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: pathController,
-                      decoration: const InputDecoration(
-                        labelText: 'Basis-Pfad (WebDAV)',
-                        hintText: '/',
-                        prefixIcon: Icon(Icons.folder_outlined),
+                    ] else ...[
+                      // Nextcloud / WebDAV Configuration
+                      TextField(
+                        controller: urlController,
+                        decoration: InputDecoration(
+                          labelText: 'Server-Adresse (IP oder Domain)',
+                          hintText: selectedType == CloudProviderType.nextcloud
+                              ? 'z.B. 192.168.178.50 oder cloud.meinedomain.de'
+                              : 'z.B. https://webdav.server.de',
+                          prefixIcon: const Icon(Icons.dns_outlined),
+                          border: const OutlineInputBorder(),
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: userController,
+                        decoration: const InputDecoration(
+                          labelText: 'Benutzername',
+                          prefixIcon: Icon(Icons.person_outline),
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: passController,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Passwort oder App-Token',
+                          prefixIcon: Icon(Icons.lock_outline),
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: pathController,
+                        decoration: const InputDecoration(
+                          labelText: 'Basis-Pfad (WebDAV)',
+                          hintText: '/',
+                          prefixIcon: Icon(Icons.folder_outlined),
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ],
+
                     const SizedBox(height: 16),
                     if (testResult != null) ...[
                       Container(
@@ -347,6 +728,7 @@ class _CloudScreenState extends State<CloudScreen> {
                       ),
                       const SizedBox(height: 12),
                     ],
+
                     OutlinedButton.icon(
                       icon: isTesting
                           ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
@@ -358,10 +740,14 @@ class _CloudScreenState extends State<CloudScreen> {
                               final temp = CloudAccount(
                                 id: 'test',
                                 name: nameController.text.trim(),
-                                serverUrl: urlController.text.trim(),
+                                type: selectedType,
+                                serverUrl: selectedType == CloudProviderType.googleDrive
+                                    ? 'https://www.googleapis.com'
+                                    : urlController.text.trim(),
                                 username: userController.text.trim(),
                                 password: passController.text.trim(),
                                 remoteBasePath: pathController.text.trim().isEmpty ? '/' : pathController.text.trim(),
+                                accessToken: tokenController.text.trim(),
                               );
                               setDialogState(() {
                                 isTesting = true;
@@ -384,18 +770,31 @@ class _CloudScreenState extends State<CloudScreen> {
                 ),
                 FilledButton(
                   onPressed: () async {
-                    if (urlController.text.trim().isEmpty ||
-                        userController.text.trim().isEmpty ||
-                        passController.text.trim().isEmpty) {
-                      return;
+                    if (selectedType == CloudProviderType.googleDrive) {
+                      if (userController.text.trim().isEmpty || tokenController.text.trim().isEmpty) {
+                        return;
+                      }
+                    } else {
+                      if (urlController.text.trim().isEmpty ||
+                          userController.text.trim().isEmpty ||
+                          passController.text.trim().isEmpty) {
+                        return;
+                      }
                     }
+
                     final acc = CloudAccount(
                       id: editAccount?.id ?? const Uuid().v4(),
-                      name: nameController.text.trim().isEmpty ? 'Nextcloud' : nameController.text.trim(),
-                      serverUrl: urlController.text.trim(),
+                      name: nameController.text.trim().isEmpty
+                          ? (selectedType == CloudProviderType.googleDrive ? 'Google Drive' : 'Nextcloud')
+                          : nameController.text.trim(),
+                      type: selectedType,
+                      serverUrl: selectedType == CloudProviderType.googleDrive
+                          ? 'https://www.googleapis.com'
+                          : urlController.text.trim(),
                       username: userController.text.trim(),
                       password: passController.text.trim(),
                       remoteBasePath: pathController.text.trim().isEmpty ? '/' : pathController.text.trim(),
+                      accessToken: tokenController.text.trim().isNotEmpty ? tokenController.text.trim() : null,
                     );
                     await state.saveCloudAccount(acc);
                     if (ctx.mounted) {
@@ -424,9 +823,12 @@ class _CloudScreenState extends State<CloudScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            const Icon(Icons.cloud_sync, color: Colors.teal),
+            Icon(
+              activeAccount?.type == CloudProviderType.googleDrive ? Icons.add_to_drive : Icons.cloud_sync,
+              color: Colors.teal,
+            ),
             const SizedBox(width: 10),
-            const Text('Cloud-Sync'),
+            Text(activeAccount?.type == CloudProviderType.googleDrive ? 'Google Drive' : 'Cloud-Sync'),
             if (activeAccount != null) ...[
               const SizedBox(width: 8),
               Chip(
@@ -466,7 +868,7 @@ class _CloudScreenState extends State<CloudScreen> {
                       child: Row(
                         children: [
                           Icon(
-                            acc.id == activeAccount?.id ? Icons.check : Icons.cloud_outlined,
+                            acc.id == activeAccount?.id ? Icons.check : (acc.type == CloudProviderType.googleDrive ? Icons.add_to_drive : Icons.cloud_outlined),
                             color: acc.id == activeAccount?.id ? Colors.teal : null,
                             size: 20,
                           ),
@@ -582,14 +984,14 @@ class _CloudScreenState extends State<CloudScreen> {
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Verbinden Sie Ihre persönliche Nextcloud oder einen beliebigen WebDAV-Server, um Dateien direkt zwischen all Ihren Geräten und Ihrer Cloud auszutauschen.',
+                  'Verbinden Sie Ihre Nextcloud, Ihr Google Drive oder einen beliebigen WebDAV-Server, um Dateien direkt zwischen all Ihren Geräten und Ihrer Cloud auszutauschen.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 14, color: Colors.grey, height: 1.4),
                 ),
                 const SizedBox(height: 24),
                 FilledButton.icon(
                   icon: const Icon(Icons.add_link),
-                  label: const Text('Nextcloud / WebDAV verbinden'),
+                  label: const Text('Cloud-Konto verbinden'),
                   style: FilledButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                   ),
@@ -682,18 +1084,33 @@ class _CloudScreenState extends State<CloudScreen> {
         final isDownloading = _downloadProgress.containsKey(item.path);
         final downloadProg = _downloadProgress[item.path] ?? 0.0;
 
+        IconData fileIcon;
+        if (item.isDirectory) {
+          fileIcon = Icons.folder;
+        } else if (item.isImage) {
+          fileIcon = Icons.image;
+        } else if (item.isText) {
+          fileIcon = Icons.description;
+        } else if (item.isPdf) {
+          fileIcon = Icons.picture_as_pdf;
+        } else {
+          fileIcon = Icons.insert_drive_file;
+        }
+
         return ListTile(
           leading: Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: item.isDirectory
                   ? theme.colorScheme.primaryContainer.withOpacity(0.4)
-                  : theme.colorScheme.surfaceVariant.withOpacity(0.5),
+                  : (item.isImage ? Colors.purple.withOpacity(0.12) : theme.colorScheme.surfaceVariant.withOpacity(0.5)),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(
-              item.isDirectory ? Icons.folder : Icons.insert_drive_file,
-              color: item.isDirectory ? theme.colorScheme.primary : theme.colorScheme.onSurfaceVariant,
+              fileIcon,
+              color: item.isDirectory
+                  ? theme.colorScheme.primary
+                  : (item.isImage ? Colors.purple : theme.colorScheme.onSurfaceVariant),
             ),
           ),
           title: Text(item.name, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -719,6 +1136,13 @@ class _CloudScreenState extends State<CloudScreen> {
               : Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    // Preview / View eye button for instant viewing
+                    IconButton(
+                      icon: const Icon(Icons.visibility_outlined),
+                      tooltip: item.isImage ? 'Bild anzeigen' : (item.isText ? 'Text ansehen' : 'Öffnen'),
+                      onPressed: () => _openOrPreviewFile(item),
+                    ),
+                    // Download button
                     IconButton(
                       icon: isDownloading
                           ? const SizedBox(
@@ -730,15 +1154,67 @@ class _CloudScreenState extends State<CloudScreen> {
                       tooltip: 'Herunterladen',
                       onPressed: isDownloading ? null : () => _downloadFile(item),
                     ),
+                    // More options popup
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert, size: 20),
+                      onSelected: (val) {
+                        if (val == 'view') {
+                          _openOrPreviewFile(item);
+                        } else if (val == 'download') {
+                          _downloadFile(item);
+                        } else if (val == 'share') {
+                          _shareFileToDevice(item);
+                        } else if (val == 'delete') {
+                          _deleteItemDialog(item);
+                        }
+                      },
+                      itemBuilder: (c) => [
+                        PopupMenuItem(
+                          value: 'view',
+                          child: Row(
+                            children: [
+                              const Icon(Icons.visibility_outlined, size: 18),
+                              const SizedBox(width: 8),
+                              Text(item.isImage ? 'Bild ansehen' : 'Vorschau / Öffnen'),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'download',
+                          child: Row(
+                            children: [
+                              Icon(Icons.download_outlined, size: 18),
+                              SizedBox(width: 8),
+                              Text('In Downloads speichern'),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'share',
+                          child: Row(
+                            children: [
+                              Icon(Icons.send_outlined, size: 18),
+                              SizedBox(width: 8),
+                              Text('Per CrossDrop an Gerät senden'),
+                            ],
+                          ),
+                        ),
+                        const PopupMenuDivider(),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete_outline, color: Colors.red, size: 18),
+                              SizedBox(width: 8),
+                              Text('Löschen', style: TextStyle(color: Colors.red)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
-          onTap: () {
-            if (item.isDirectory) {
-              _navigateInto(item.name);
-            } else {
-              _downloadFile(item);
-            }
-          },
+          onTap: () => _openOrPreviewFile(item),
         );
       },
     );

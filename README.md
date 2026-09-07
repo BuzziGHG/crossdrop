@@ -1,15 +1,15 @@
 # CrossDrop 🚀
 
 [![Release](https://img.shields.io/github/v/release/BuzziGHG/crossdrop?color=blue&label=Aktuelle%20Version)](https://github.com/BuzziGHG/crossdrop/releases/latest)
-[![Plattformen](https://img.shields.io/badge/Plattformen-Windows%20%7C%20Linux%20%7C%20Android-brightgreen)](#-downloads-aktuelle-version-140)
+[![Plattformen](https://img.shields.io/badge/Plattformen-Windows%20%7C%20Linux%20%7C%20Android-brightgreen)](#-downloads-aktuelle-version-141)
 [![Lizenz](https://img.shields.io/badge/Lizenz-MIT-orange)](LICENSE)
 
-> **Schneller, sicherer und grenzenloser Datentransfer zwischen Windows, Linux, Android und Cloud.**  
-> Übertragen Sie einzelne Dateien, ganze Ordner und bis zu 5.000 Dateien blitzschnell im lokalen Netzwerk (LAN / WLAN), über den integrierten VPN-Tunnel oder synchronisieren Sie diese direkt mit Ihrer persönlichen **Nextcloud / WebDAV**.
+> **Schneller, sicherer und grenzenloser Datentransfer zwischen Windows, Linux, Android, Nextcloud & Google Drive.**  
+> Übertragen Sie einzelne Dateien, ganze Ordner und bis zu 5.000 Dateien blitzschnell im lokalen Netzwerk (LAN / WLAN), über den integrierten VPN-Tunnel oder synchronisieren Sie diese direkt mit Ihrer **Nextcloud, WebDAV oder Google Drive**.
 
 ---
 
-## 📥 Downloads (Aktuelle Version 1.4.0)
+## 📥 Downloads (Aktuelle Version 1.4.1)
 
 Wählen Sie einfach Ihr Betriebssystem aus und laden Sie die passende Version herunter:
 
@@ -17,31 +17,27 @@ Wählen Sie einfach Ihr Betriebssystem aus und laden Sie die passende Version he
 | :--- | :--- | :--- | :--- |
 | 🪟 **Windows 10 / 11** | Setup-Installer (`.exe`) | [⬇️ CrossDrop-Windows-Setup.exe](https://github.com/BuzziGHG/crossdrop/releases/latest/download/CrossDrop-Windows-Setup.exe) *(Empfohlen)* | [⚡ Direktdownload](http://82.29.5.240:2603/api/updates/download/windows) |
 | 🪟 **Windows (Portabel)** | ZIP-Archiv | [⬇️ CrossDrop-Windows-x64.zip](https://github.com/BuzziGHG/crossdrop/releases/latest/download/CrossDrop-Windows-x64.zip) | - |
-| 🐧 **Linux (Debian / Ubuntu)** | Paket (`.deb`) | [⬇️ crossdrop_1.4.0_amd64.deb](https://github.com/BuzziGHG/crossdrop/releases/latest/download/crossdrop_1.4.0_amd64.deb) | [⚡ Direktdownload](http://82.29.5.240:2603/api/updates/download/linux) |
+| 🐧 **Linux (Debian / Ubuntu)** | Paket (`.deb`) | [⬇️ crossdrop_1.4.1_amd64.deb](https://github.com/BuzziGHG/crossdrop/releases/latest/download/crossdrop_1.4.1_amd64.deb) | [⚡ Direktdownload](http://82.29.5.240:2603/api/updates/download/linux) |
 | 📱 **Android** | App-Paket (`.apk`) | [⬇️ crossdrop-release.apk](https://github.com/BuzziGHG/crossdrop/releases/latest/download/crossdrop-release.apk) | [⚡ Direktdownload](http://82.29.5.240:2603/api/updates/download/android) |
 
 👉 **[Alle Downloads und Versionshinweise auf der Release-Seite ansehen](https://github.com/BuzziGHG/crossdrop/releases)**
 
 ---
 
-## ✨ Was ist neu in Version 1.4.0?
+## ✨ Was ist neu in Version 1.4.1?
 
-- ☁️ **Cloud-Synchronisation (Nextcloud & WebDAV):**
-  - **Eigene Cloud einbinden:** Verbinden Sie Ihre private Nextcloud oder jeden beliebigen WebDAV-Server ganz einfach über IP-Adresse / Domain, Benutzername und Passwort oder App-Token.
-  - **Live-Verbindungstest:** Direkte Prüfung der Erreichbarkeit und Zugangsdaten direkt in der App per Knopfdruck.
-  - **Integrierter Cloud-Dateimanager:** Eigener Reiter in der App zum Durchsuchen Ihrer Nextcloud-Ordner, Anlegen neuer Ordner, Herunterladen von Dateien auf das lokale Gerät und Löschen nicht mehr benötigter Daten.
-  - **Direktes Hochladen in die Cloud:** Im Senden-Menü können Dateien oder Ordner direkt in Ihr gewünschtes Nextcloud-Verzeichnis geladen werden – ohne zusätzliche Software.
-- 📦 **Stapel-Übertragung & Ordnerversand (bis zu 5.000 Dateien):**
-  - **Massentransfer:** Versenden Sie nicht mehr nur einzelne Dateien, sondern markieren Sie hunderte oder tausende Dateien auf einmal oder wählen Sie einfach einen kompletten Ordner aus.
-  - **Echtzeit-Stapelfortschritt:** Der Fortschrittsbalken fasst alle Dateien zusammen und zeigt genau an: *„Datei 142 von 1.500 – 45% (1.2 GB / 2.8 GB)“* inklusive Übertragungsrate und verbleibender Zeit.
-  - Unterstützt im lokalen Netzwerk (LAN P2P), über weltweites VPN/Relay sowie im Cloud-Upload.
-- 🔔 **Android Benachrichtigungs-Optimierung (Single Unified Notification):**
-  - Saubere Benachrichtigungsleiste ohne Duplikate oder Aufploppen beim Wegwischen.
-  - Native Vordergrund-Dienst-Integration (`TransferForegroundService`) mit `PARTIAL_WAKE_LOCK` und `WifiLock` für ununterbrochene Transfers im Hintergrund.
-- 🛑 **Plattformübergreifendes Abbrechen von Dateiübertragungen:**
-  - Neue **"Abbrechen"**-Buttons in Dashboard, Transfers-Screen und Dialogen zum sofortigen Stoppen und Bereinigen von Transfers.
-- 💾 **Zero-Disk In-Memory Streaming Relay:**
-  - 100 % RAM-Streaming über `RelayPipe` – 0 Byte Server-Festplattenbelegung für grenzenlose Übertragungen ohne Speicherengpässe.
+- 🛠️ **Nextcloud WebDAV 404 Download-Fix:**
+  - Behebt das Problem, dass Downloads aus Nextcloud mit HTTP 404 abbrachen: Durch eine neue universelle URI-Erkennung wird die Verdoppelung des WebDAV-Basispfads (`/remote.php/dav/files/...`) verhindert.
+- 🖼️ **In-App Dateivorschau & Betrachter („Direkt in der App ansehen“):**
+  - **Integrierter Bildbetrachter:** Schnelles Öffnen und Betrachten von Bildern (JPG, PNG, GIF, WEBP, SVG) direkt in der App mit Zoom & Pan (`InteractiveViewer`).
+  - **Text- & Code-Viewer:** Scrollbare Monospace-Vorschau für Text-, Log- und Quellcodedateien (TXT, MD, JSON, CSV, XML, Dart, Python) mit Kopierfunktion.
+  - **Dokumenten-Öffnen:** Ein Klick auf PDFs oder Office-Dokumente öffnet die Datei sofort in der jeweiligen System-Standard-App.
+  - **Aktionsmenü:** Vorschau, Speichern in Downloads, Direktes Weiterleiten per CrossDrop an andere Geräte oder Löschen.
+- 📁 **Google Drive & Google-Konto-Anbindung:**
+  - Direkte Verknüpfung von Google Drive über Google OAuth-Tokens.
+  - Vollständige Integration der Google Drive REST API v3 zum Durchsuchen, Herunterladen, Betrachten und Hochladen von Dateien.
+- 📦 **Stapel-Übertragung & Ordnerversand (bis zu 5.000 Dateien aus v1.4.0):**
+  - Gleichzeitiger Versand von bis zu 5.000 Dateien im LAN, über Server-Relay oder im Cloud-Upload mit aggregiertem Gesamtfortschritt.
 
 ---
 

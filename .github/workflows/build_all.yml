@@ -216,12 +216,11 @@ jobs:
             ## 🚀 Großes Update ${{ steps.release_version.outputs.tag }}
 
             ### ✨ Neue Highlights & Funktionen:
-            - ☁️ **Cloud-Synchronisation (Nextcloud & WebDAV):** Eigene Nextcloud oder beliebige WebDAV-Server direkt über IP/Domain und Zugangsdaten anbinden, Verbindung live testen, Verzeichnisse durchsuchen, Dateien herunterladen und direkt in die Cloud sichern.
-            - 📦 **Stapel-Übertragung & Ordnerversand (bis zu 5.000 Dateien):** Tausende Dateien oder ganze Verzeichnisse auf einmal übertragen – im LAN, über weltweites VPN/Relay oder direkt in Ihre Nextcloud mit aggregierter Live-Fortschrittsanzeige.
-            - 🔔 **Android Single Unified Notification:** Saubere Benachrichtigungsleiste ohne doppelte Meldungen beim Minimieren oder Schließen der App.
-            - 📱 **Android Hintergrund-Service & Verbindungsstabilität (WakeLock & WifiLock):** Datenübertragungen laufen dank `TransferForegroundService` auch bei ausgeschaltetem Bildschirm ununterbrochen weiter.
-            - 🛑 **Plattformübergreifendes Abbrechen von Dateiübertragungen:** Sofortiges Stoppen und Bereinigen von Transfers auf Windows, Linux und Android per Knopfdruck.
-            - 💾 **Zero-Disk In-Memory Streaming Relay:** Dateien werden im RAM gestreamt (0 Byte Server-Festplattenbelegung).
+            - 🛠️ **Nextcloud WebDAV 404 Download-Fix:** Universelle URI-Auflösung ohne Pfad-Verdoppelung.
+            - 🖼️ **In-App Dateivorschau & Betrachter:** Bilder (JPG, PNG, GIF, WEBP) mit Zoom/Pan ansehen, Text- & Quellcodedateien im Monospace-Viewer lesen und PDFs/Dokumente sofort mit System-Apps öffnen.
+            - 📁 **Google Drive Integration:** Direkte Google-Konto-Verbindung und Google Drive API v3 Zugriff.
+            - ☁️ **Cloud-Synchronisation (Nextcloud & WebDAV):** Verzeichnisse durchsuchen, neue Ordner anlegen, Dateien herunterladen und sichern.
+            - 📦 **Stapel-Übertragung & Ordnerversand (bis zu 5.000 Dateien):** Tausende Dateien oder ganze Verzeichnisse auf einmal übertragen.
 
             ### 📦 Fertige Downloads:
             - 🪟 **Windows Setup-Installer (.exe):** `CrossDrop-Windows-Setup.exe` (Empfohlen: Installation mit Desktop- & Startmenü-Verknüpfung)
