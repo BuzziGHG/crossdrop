@@ -32,11 +32,12 @@ class TransferForegroundService : Service() {
         const val EXTRA_CONTENT = "EXTRA_CONTENT"
         const val EXTRA_PROGRESS = "EXTRA_PROGRESS"
 
-        fun startService(context: Context, title: String, content: String) {
+        fun startService(context: Context, title: String, content: String, progress: Int = -1) {
             val intent = Intent(context, TransferForegroundService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_TITLE, title)
                 putExtra(EXTRA_CONTENT, content)
+                putExtra(EXTRA_PROGRESS, progress)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
@@ -100,7 +101,8 @@ class TransferForegroundService : Service() {
             ACTION_START -> {
                 val title = intent.getStringExtra(EXTRA_TITLE) ?: "CrossDrop Dateiübertragung"
                 val content = intent.getStringExtra(EXTRA_CONTENT) ?: "Übertragung läuft im Hintergrund..."
-                val notification = buildNotification(title, content, -1)
+                val progress = intent.getIntExtra(EXTRA_PROGRESS, -1)
+                val notification = buildNotification(title, content, progress)
                 
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
@@ -118,7 +120,13 @@ class TransferForegroundService : Service() {
                 manager.notify(NOTIFICATION_ID, notification)
             }
             ACTION_STOP -> {
-                stopForeground(true)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                } else {
+                    stopForeground(true)
+                }
+                val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                manager.cancel(NOTIFICATION_ID)
                 stopSelf()
             }
         }
@@ -175,6 +183,10 @@ class TransferForegroundService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        try {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.cancel(NOTIFICATION_ID)
+        } catch (e: Exception) {}
         try {
             if (wakeLock?.isHeld == true) wakeLock?.release()
         } catch (e: Exception) {}

@@ -45,6 +45,8 @@ class NotificationService {
           final androidImpl = _notifications.resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
           await androidImpl?.requestNotificationsPermission();
+          // Cancel any stale local notifications on startup
+          await _notifications.cancelAll();
         }
       }
 
@@ -100,6 +102,7 @@ class NotificationService {
           _installerChannel.invokeMethod('startForegroundService', {
             'title': title,
             'content': body,
+            'progress': progressPercent.clamp(0, 100),
           });
         } else {
           _installerChannel.invokeMethod('updateForegroundProgress', {
@@ -111,8 +114,12 @@ class NotificationService {
       } catch (e) {
         debugPrint('Foreground service error: $e');
       }
+      // On Android, TransferForegroundService manages the single persistent notification!
+      // Do NOT call _notifications.show() here to prevent duplicate notifications.
+      return;
     }
 
+    // On Linux / desktop platforms, use flutter_local_notifications:
     final androidDetails = AndroidNotificationDetails(
       channelId,
       channelName,
@@ -141,7 +148,7 @@ class NotificationService {
   }
 
   Future<void> stopForegroundService() async {
-    if (Platform.isAndroid && _foregroundServiceActive) {
+    if (Platform.isAndroid) {
       _foregroundServiceActive = false;
       try {
         await _installerChannel.invokeMethod('stopForegroundService');

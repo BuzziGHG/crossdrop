@@ -96,8 +96,9 @@ class MainActivity: FlutterActivity() {
                 "startForegroundService" -> {
                     val title = call.argument<String>("title") ?: "CrossDrop Dateiübertragung"
                     val content = call.argument<String>("content") ?: "Übertragung läuft im Hintergrund..."
+                    val progress = call.argument<Int>("progress") ?: -1
                     try {
-                        TransferForegroundService.startService(applicationContext, title, content)
+                        TransferForegroundService.startService(applicationContext, title, content, progress)
                         result.success(true)
                     } catch (e: Exception) {
                         result.error("SERVICE_START_FAILED", e.message, null)
