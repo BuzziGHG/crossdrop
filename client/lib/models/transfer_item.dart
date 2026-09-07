@@ -21,6 +21,12 @@ class TransferItem {
   String? errorMessage;
   final DateTime createdAt;
 
+  // Batch transfer properties (for sending multiple files or folders up to 5000 files)
+  bool isBatch;
+  int batchTotalFiles;
+  int batchCurrentFileIndex;
+  String? batchCurrentFileName;
+
   TransferItem({
     required this.id,
     required this.filename,
@@ -40,6 +46,10 @@ class TransferItem {
     this.isCrossAccount = false,
     this.errorMessage,
     DateTime? createdAt,
+    this.isBatch = false,
+    this.batchTotalFiles = 1,
+    this.batchCurrentFileIndex = 1,
+    this.batchCurrentFileName,
   }) : createdAt = createdAt ?? DateTime.now();
 
   double get progress {

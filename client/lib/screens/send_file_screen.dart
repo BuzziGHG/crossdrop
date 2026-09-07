@@ -3,9 +3,11 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
+import '../models/cloud_account.dart';
 import '../models/device.dart';
 import '../models/transfer_item.dart';
 import '../services/app_state.dart';
+import 'cloud_screen.dart';
 
 class SendFileScreen extends StatefulWidget {
   final File? preselectedFile;
@@ -22,21 +24,25 @@ class SendFileScreen extends StatefulWidget {
 }
 
 class _SendFileScreenState extends State<SendFileScreen> {
-  File? _selectedFile;
+  List<File> _selectedFiles = [];
   DeviceModel? _selectedDevice;
   ConnectionMode _connectionMode = ConnectionMode.lan;
   bool _isSending = false;
 
-  int _sendModeTab = 0; // 0: Eigenes Gerät, 1: An anderen Account (E-Mail)
+  int _sendModeTab = 0; // 0: Eigenes Gerät, 1: An anderen Account (E-Mail), 2: Cloud-Speicher (Nextcloud)
   final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _cloudPathController = TextEditingController(text: '/');
   bool _isCheckingEmail = false;
   Map<String, dynamic>? _recipientData;
   String? _emailError;
+  bool _isScanningFolder = false;
 
   @override
   void initState() {
     super.initState();
-    _selectedFile = widget.preselectedFile;
+    if (widget.preselectedFile != null) {
+      _selectedFiles = [widget.preselectedFile!];
+    }
     _selectedDevice = widget.preselectedDevice;
     if (_selectedDevice != null) {
       _connectionMode = _selectedDevice!.preferredMode;
@@ -46,16 +52,61 @@ class _SendFileScreenState extends State<SendFileScreen> {
   @override
   void dispose() {
     _emailController.dispose();
+    _cloudPathController.dispose();
     super.dispose();
   }
 
-  Future<void> _pickFile() async {
-    final result = await FilePicker.platform.pickFiles();
-    if (result != null && result.files.isNotEmpty && result.files.first.path != null) {
-      setState(() {
-        _selectedFile = File(result.files.first.path!);
-      });
+  Future<void> _pickFiles() async {
+    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+    if (result != null && result.files.isNotEmpty) {
+      final picked = result.files
+          .where((f) => f.path != null)
+          .map((f) => File(f.path!))
+          .toList();
+      if (picked.isNotEmpty) {
+        setState(() {
+          _selectedFiles = picked;
+        });
+      }
     }
+  }
+
+  Future<void> _pickFolder() async {
+    setState(() => _isScanningFolder = true);
+    try {
+      final dirPath = await FilePicker.platform.getDirectoryPath();
+      if (dirPath != null && dirPath.isNotEmpty) {
+        final dir = Directory(dirPath);
+        if (await dir.exists()) {
+          final List<File> files = [];
+          await for (final entity in dir.list(recursive: true, followLinks: false)) {
+            if (entity is File) {
+              files.add(entity);
+              if (files.length >= 5000) break;
+            }
+          }
+          if (files.isNotEmpty) {
+            setState(() {
+              _selectedFiles = files;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error picking folder: $e');
+    } finally {
+      if (mounted) setState(() => _isScanningFolder = false);
+    }
+  }
+
+  Future<int> _calculateTotalBytes() async {
+    int total = 0;
+    for (final f in _selectedFiles) {
+      try {
+        total += await f.length();
+      } catch (_) {}
+    }
+    return total;
   }
 
   Future<void> _checkEmail() async {
@@ -99,7 +150,7 @@ class _SendFileScreenState extends State<SendFileScreen> {
   }
 
   Future<void> _send() async {
-    if (_selectedFile == null) return;
+    if (_selectedFiles.isEmpty) return;
     if (_sendModeTab == 0 && _selectedDevice == null) return;
     if (_sendModeTab == 1 && (_recipientData == null || _recipientData!['has_online_device'] != true)) {
       await _checkEmail();
@@ -117,21 +168,64 @@ class _SendFileScreenState extends State<SendFileScreen> {
 
     final state = Provider.of<AppState>(context, listen: false);
 
+    if (_sendModeTab == 2) {
+      final account = state.activeCloudAccount ?? (state.cloudAccounts.isNotEmpty ? state.cloudAccounts.first : null);
+      if (account == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Bitte zuerst ein Cloud-Konto anlegen.'), backgroundColor: Colors.orange),
+        );
+        return;
+      }
+    }
+
     setState(() {
       _isSending = true;
     });
 
     try {
       if (_sendModeTab == 0) {
-        await state.startSendingFile(
-          file: _selectedFile!,
-          targetDevice: _selectedDevice!,
-          mode: _connectionMode,
-        );
-      } else {
-        await state.startSendingFileByEmail(
-          file: _selectedFile!,
-          recipientEmail: _emailController.text.trim(),
+        if (_selectedFiles.length == 1) {
+          await state.startSendingFile(
+            file: _selectedFiles.first,
+            targetDevice: _selectedDevice!,
+            mode: _connectionMode,
+          );
+        } else {
+          await state.startSendingFilesBatch(
+            files: _selectedFiles,
+            targetDevice: _selectedDevice!,
+            mode: _connectionMode,
+          );
+        }
+      } else if (_sendModeTab == 1) {
+        if (_selectedFiles.length == 1) {
+          await state.startSendingFileByEmail(
+            file: _selectedFiles.first,
+            recipientEmail: _emailController.text.trim(),
+          );
+        } else {
+          await state.startSendingFilesBatch(
+            files: _selectedFiles,
+            targetDevice: DeviceModel(
+              id: 'cross-account',
+              name: _recipientData?['target_device_name'] ?? _emailController.text.trim(),
+              platform: 'remote',
+              transferPort: 2603,
+              localIps: [],
+              vpnIps: [],
+              isOnline: true,
+            ),
+            mode: ConnectionMode.vpn,
+            isCrossAccount: true,
+            recipientEmail: _emailController.text.trim(),
+          );
+        }
+      } else if (_sendModeTab == 2) {
+        final account = state.activeCloudAccount ?? state.cloudAccounts.first;
+        await state.uploadFilesToCloud(
+          account: account,
+          files: _selectedFiles,
+          remotePath: _cloudPathController.text.trim().isEmpty ? '/' : _cloudPathController.text.trim(),
         );
       }
 
@@ -225,15 +319,17 @@ class _SendFileScreenState extends State<SendFileScreen> {
 
                     // Filename & Target
                     Text(
-                      activeItem.filename,
+                      activeItem.isBatch && activeItem.batchCurrentFileName != null
+                          ? '${activeItem.filename}\nAktuell: ${activeItem.batchCurrentFileName!} (${activeItem.batchCurrentFileIndex}/${activeItem.batchTotalFiles})'
+                          : activeItem.filename,
                       style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center,
-                      maxLines: 2,
+                      maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'An: ${activeItem.peerDeviceName} (${activeItem.mode})',
+                      'Ziel: ${activeItem.peerDeviceName} (${activeItem.mode})',
                       style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
                     ),
                     const SizedBox(height: 24),
@@ -440,7 +536,7 @@ class _SendFileScreenState extends State<SendFileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 1. File Selection Card
+            // 1. File Selection Card (Supports single file, multi-file & whole folders up to 5,000 files)
             Card(
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
               elevation: 2,
@@ -448,19 +544,49 @@ class _SendFileScreenState extends State<SendFileScreen> {
                 padding: const EdgeInsets.all(20.0),
                 child: Column(
                   children: [
-                    if (_selectedFile == null) ...[
-                      Icon(Icons.cloud_upload_outlined, size: 64, color: theme.colorScheme.primary),
+                    if (_selectedFiles.isEmpty) ...[
+                      Icon(Icons.drive_folder_upload_outlined, size: 56, color: theme.colorScheme.primary),
                       const SizedBox(height: 12),
                       const Text(
-                        'Wählen Sie eine Datei von diesem Gerät aus',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                        'Dateien oder Ordner auswählen',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Stapel-Übertragung von bis zu 5.000 Dateien unterstützt',
+                        style: theme.textTheme.bodySmall?.copyWith(color: Colors.grey),
+                        textAlign: TextAlign.center,
                       ),
                       const SizedBox(height: 16),
-                      FilledButton.icon(
-                        icon: const Icon(Icons.attach_file),
-                        label: const Text('Datei auswählen'),
-                        onPressed: _pickFile,
-                      ),
+                      if (_isScanningFolder) ...[
+                        const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                            SizedBox(width: 12),
+                            Text('Ordner wird eingelesen...', style: TextStyle(fontSize: 13)),
+                          ],
+                        ),
+                      ] else ...[
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 8,
+                          alignment: WrapAlignment.center,
+                          children: [
+                            FilledButton.icon(
+                              icon: const Icon(Icons.attach_file),
+                              label: const Text('Dateien wählen'),
+                              onPressed: _pickFiles,
+                            ),
+                            OutlinedButton.icon(
+                              icon: const Icon(Icons.folder_open),
+                              label: const Text('Ganzen Ordner'),
+                              onPressed: _pickFolder,
+                            ),
+                          ],
+                        ),
+                      ],
                     ] else ...[
                       Row(
                         children: [
@@ -470,7 +596,11 @@ class _SendFileScreenState extends State<SendFileScreen> {
                               color: theme.colorScheme.primaryContainer,
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Icon(Icons.insert_drive_file, color: theme.colorScheme.onPrimaryContainer),
+                            child: Icon(
+                              _selectedFiles.length > 1 ? Icons.folder_copy : Icons.insert_drive_file,
+                              color: theme.colorScheme.onPrimaryContainer,
+                              size: 28,
+                            ),
                           ),
                           const SizedBox(width: 14),
                           Expanded(
@@ -478,18 +608,20 @@ class _SendFileScreenState extends State<SendFileScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  p.basename(_selectedFile!.path),
+                                  _selectedFiles.length == 1
+                                      ? p.basename(_selectedFiles.first.path)
+                                      : '${_selectedFiles.length} Dateien ausgewählt',
                                   style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 const SizedBox(height: 4),
                                 FutureBuilder<int>(
-                                  future: _selectedFile!.length(),
+                                  future: _calculateTotalBytes(),
                                   builder: (context, snapshot) {
                                     final size = snapshot.data ?? 0;
                                     return Text(
-                                      TransferItem.formatBytes(size),
+                                      '${TransferItem.formatBytes(size)}${_selectedFiles.length > 1 ? ' gesamt' : ''}',
                                       style: TextStyle(color: theme.colorScheme.onSurfaceVariant),
                                     );
                                   },
@@ -498,9 +630,18 @@ class _SendFileScreenState extends State<SendFileScreen> {
                             ),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.change_circle_outlined),
-                            tooltip: 'Andere Datei wählen',
-                            onPressed: _pickFile,
+                            icon: const Icon(Icons.add_circle_outline),
+                            tooltip: 'Mehr Dateien hinzufügen',
+                            onPressed: _pickFiles,
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close),
+                            tooltip: 'Auswahl zurücksetzen',
+                            onPressed: () {
+                              setState(() {
+                                _selectedFiles = [];
+                              });
+                            },
                           ),
                         ],
                       ),
@@ -511,18 +652,23 @@ class _SendFileScreenState extends State<SendFileScreen> {
             ),
             const SizedBox(height: 24),
 
-            // 2. Mode Selector: Own Device vs Other Account via Email
+            // 2. Mode Selector: Own Device vs Other Account (Email) vs Cloud (Nextcloud)
             SegmentedButton<int>(
               segments: const [
                 ButtonSegment<int>(
                   value: 0,
                   icon: Icon(Icons.devices),
-                  label: Text('Meine Geräte'),
+                  label: Text('Geräte'),
                 ),
                 ButtonSegment<int>(
                   value: 1,
                   icon: Icon(Icons.mail_outline),
-                  label: Text('Per E-Mail senden'),
+                  label: Text('E-Mail'),
+                ),
+                ButtonSegment<int>(
+                  value: 2,
+                  icon: Icon(Icons.cloud_sync),
+                  label: Text('Cloud'),
                 ),
               ],
               selected: {_sendModeTab},
@@ -655,7 +801,7 @@ class _SendFileScreenState extends State<SendFileScreen> {
                   if (val != null) setState(() => _connectionMode = val);
                 },
               ),
-            ] else ...[
+            ] else if (_sendModeTab == 1) ...[
               // Cross-Account E-Mail Mode UI
               Text(
                 'Empfänger-Account (E-Mail)',
@@ -813,22 +959,135 @@ class _SendFileScreenState extends State<SendFileScreen> {
                   ),
                 ),
               ),
+            ] else if (_sendModeTab == 2) ...[
+              // Cloud Storage Mode (Nextcloud / WebDAV)
+              Text(
+                'Cloud-Konto (Nextcloud / WebDAV)',
+                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              if (state.cloudAccounts.isEmpty) ...[
+                Card(
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      children: [
+                        Icon(Icons.cloud_off_outlined, size: 48, color: theme.colorScheme.primary),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Noch kein Cloud-Konto verbunden',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Verbinden Sie Ihre Nextcloud mit IP-Adresse / Domain und Zugangsdaten, um Dateien direkt hochzuladen.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(fontSize: 13, color: Colors.grey),
+                        ),
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          icon: const Icon(Icons.add),
+                          label: const Text('Nextcloud verbinden'),
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const CloudScreen()),
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ] else ...[
+                DropdownButtonFormField<CloudAccount>(
+                  value: state.activeCloudAccount ?? state.cloudAccounts.first,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.cloud_done),
+                    labelText: 'Aktives Cloud-Konto',
+                  ),
+                  items: state.cloudAccounts.map((acc) {
+                    return DropdownMenuItem<CloudAccount>(
+                      value: acc,
+                      child: Text('${acc.name} (${acc.serverUrl})', overflow: TextOverflow.ellipsis),
+                    );
+                  }).toList(),
+                  onChanged: (acc) {
+                    if (acc != null) {
+                      state.setActiveCloudAccount(acc);
+                    }
+                  },
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _cloudPathController,
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    prefixIcon: const Icon(Icons.folder_open),
+                    labelText: 'Zielordner auf der Cloud',
+                    hintText: '/',
+                    helperText: 'Dateien werden in dieses Verzeichnis auf Ihrer Nextcloud geladen',
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              Card(
+                elevation: 0,
+                color: theme.colorScheme.primaryContainer.withOpacity(0.35),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.25)),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(14.0),
+                  child: Row(
+                    children: [
+                      Icon(Icons.cloud_sync, color: theme.colorScheme.primary, size: 24),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Text(
+                          'Dateien werden direkt über WebDAV auf Ihren Server übertragen. Es wird kein fremder Cloud-Speicher zwischengeschaltet.',
+                          style: TextStyle(fontSize: 12, height: 1.3),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ],
             const SizedBox(height: 32),
 
             // Send Button
             FilledButton.icon(
               icon: const Icon(Icons.send_rounded),
-              label: Text(_sendModeTab == 1 ? 'An Empfänger senden' : 'Datei jetzt übertragen'),
+              label: Text(
+                _sendModeTab == 2
+                    ? (_selectedFiles.length > 1
+                        ? '${_selectedFiles.length} Dateien in Cloud laden'
+                        : 'In Cloud hochladen')
+                    : (_sendModeTab == 1
+                        ? (_selectedFiles.length > 1
+                            ? '${_selectedFiles.length} Dateien per E-Mail senden'
+                            : 'An Empfänger senden')
+                        : (_selectedFiles.length > 1
+                            ? '${_selectedFiles.length} Dateien übertragen'
+                            : 'Datei jetzt übertragen')),
+              ),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 18),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              onPressed: (_selectedFile != null &&
+              onPressed: (_selectedFiles.isNotEmpty &&
                       !_isSending &&
                       (_sendModeTab == 0
                           ? _selectedDevice != null
-                          : _emailController.text.trim().isNotEmpty))
+                          : (_sendModeTab == 1
+                              ? _emailController.text.trim().isNotEmpty
+                              : state.cloudAccounts.isNotEmpty)))
                   ? _send
                   : null,
             ),

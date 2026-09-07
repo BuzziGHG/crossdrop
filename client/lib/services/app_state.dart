@@ -5,9 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 import '../models/user.dart';
 import '../models/device.dart';
 import '../models/transfer_item.dart';
+import '../models/cloud_account.dart';
 import 'storage_service.dart';
 import 'api_service.dart';
 import 'transfer_server.dart';
@@ -15,6 +17,7 @@ import 'transfer_client.dart';
 import 'network_detector.dart';
 import 'vpn_tunnel_service.dart';
 import 'notification_service.dart';
+import 'cloud_service.dart';
 
 class AppState extends ChangeNotifier {
   final StorageService storage;
@@ -25,6 +28,10 @@ class AppState extends ChangeNotifier {
   AppUser? currentUser;
   List<DeviceModel> devices = [];
   final List<TransferItem> transfers = [];
+
+  // Cloud Synchronisation (Nextcloud / WebDAV)
+  List<CloudAccount> cloudAccounts = [];
+  CloudAccount? activeCloudAccount;
 
   List<String> myLocalIps = [];
   List<String> myVpnIps = [];
@@ -124,6 +131,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> _init() async {
     await NotificationService().init();
+    loadCloudAccounts();
     if (currentUser != null) {
       try {
         final me = await api.getMe();
@@ -133,6 +141,53 @@ class AppState extends ChangeNotifier {
       } catch (_) {}
       await onUserLoggedIn();
     }
+  }
+
+  void loadCloudAccounts() {
+    try {
+      final rawList = storage.rawCloudAccounts;
+      cloudAccounts = rawList.map((str) {
+        final map = json.decode(str) as Map<String, dynamic>;
+        return CloudAccount.fromJson(map);
+      }).toList();
+      if (cloudAccounts.isNotEmpty) {
+        activeCloudAccount = cloudAccounts.first;
+      }
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error loading cloud accounts: $e');
+    }
+  }
+
+  Future<void> saveCloudAccount(CloudAccount account) async {
+    final index = cloudAccounts.indexWhere((a) => a.id == account.id);
+    if (index != -1) {
+      cloudAccounts[index] = account;
+    } else {
+      cloudAccounts.add(account);
+    }
+    activeCloudAccount = account;
+    await _persistCloudAccounts();
+    notifyListeners();
+  }
+
+  Future<void> removeCloudAccount(String id) async {
+    cloudAccounts.removeWhere((a) => a.id == id);
+    if (activeCloudAccount?.id == id) {
+      activeCloudAccount = cloudAccounts.isNotEmpty ? cloudAccounts.first : null;
+    }
+    await _persistCloudAccounts();
+    notifyListeners();
+  }
+
+  void setActiveCloudAccount(CloudAccount? account) {
+    activeCloudAccount = account;
+    notifyListeners();
+  }
+
+  Future<void> _persistCloudAccounts() async {
+    final rawList = cloudAccounts.map((a) => json.encode(a.toJson())).toList();
+    await storage.saveRawCloudAccounts(rawList);
   }
 
   bool get isAuthenticated => currentUser != null;
@@ -702,6 +757,191 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         }
       });
+    }
+  }
+
+  Future<void> startSendingFilesBatch({
+    required List<File> files,
+    required DeviceModel targetDevice,
+    required ConnectionMode mode,
+    bool isCrossAccount = false,
+    String? recipientEmail,
+  }) async {
+    if (files.isEmpty) return;
+
+    final batchId = const Uuid().v4();
+    final totalFiles = files.length;
+    int totalBytes = 0;
+    for (final f in files) {
+      try {
+        totalBytes += await f.length();
+      } catch (_) {}
+    }
+
+    final targetIp = mode == ConnectionMode.vpn
+        ? (targetDevice.vpnIps.isNotEmpty ? targetDevice.vpnIps.first : '10.42.0.1')
+        : (targetDevice.localIps.isNotEmpty ? targetDevice.localIps.first : (targetDevice.vpnIps.isNotEmpty ? targetDevice.vpnIps.first : '10.42.0.1'));
+
+    final modeString = mode == ConnectionMode.vpn ? 'VPN' : 'LAN';
+
+    final candidateIps = <String>[
+      if (mode == ConnectionMode.lan) ...targetDevice.localIps,
+      if (targetDevice.vpnIps.isNotEmpty) ...targetDevice.vpnIps,
+    ];
+
+    final batchItem = TransferItem(
+      id: batchId,
+      filename: totalFiles == 1 ? p.basename(files.first.path) : '$totalFiles Dateien Stapel-Übertragung',
+      totalBytes: totalBytes,
+      direction: TransferDirection.send,
+      peerDeviceName: isCrossAccount && recipientEmail != null ? recipientEmail.trim() : targetDevice.name,
+      peerDeviceId: targetDevice.id,
+      peerIp: mode == ConnectionMode.vpn ? 'Server-Relay' : targetIp,
+      peerPort: mode == ConnectionMode.vpn ? 2603 : targetDevice.transferPort,
+      mode: mode == ConnectionMode.vpn ? 'Relay' : modeString,
+      senderEmail: storage.email,
+      isCrossAccount: isCrossAccount,
+      status: TransferStatus.running,
+      isBatch: true,
+      batchTotalFiles: totalFiles,
+      batchCurrentFileIndex: 1,
+      batchCurrentFileName: p.basename(files.first.path),
+    );
+
+    _handleTransferProgress(batchItem);
+    activeSendingTaskId = batchId;
+
+    int cumulativeTransferredBytes = 0;
+
+    for (int i = 0; i < files.length; i++) {
+      if (_cancelledDownloads.contains(batchId)) {
+        batchItem.status = TransferStatus.cancelled;
+        batchItem.errorMessage = 'Stapel-Übertragung abgebrochen.';
+        batchItem.speedBytesPerSecond = 0;
+        _handleTransferProgress(batchItem);
+        break;
+      }
+
+      final file = files[i];
+      final filename = p.basename(file.path);
+      final fileSize = await file.length();
+
+      batchItem.batchCurrentFileIndex = i + 1;
+      batchItem.batchCurrentFileName = filename;
+      _handleTransferProgress(batchItem);
+
+      await TransferClient.sendFile(
+        file: file,
+        targetIp: targetIp,
+        targetPort: targetDevice.transferPort,
+        targetDeviceName: targetDevice.name,
+        senderDeviceName: deviceName,
+        connectionMode: modeString,
+        candidateIps: candidateIps,
+        targetDeviceId: targetDevice.id,
+        senderDeviceId: storage.deviceId,
+        serverUrl: storage.serverUrl,
+        token: storage.token,
+        vpnTunnel: vpnTunnel,
+        isCrossAccount: isCrossAccount,
+        senderEmail: storage.email,
+        recipientEmail: recipientEmail?.trim(),
+        onProgress: (subItem) {
+          if (_cancelledDownloads.contains(batchId)) {
+            TransferClient.cancelTransfer(subItem.id);
+            return;
+          }
+          final currentOverall = cumulativeTransferredBytes + subItem.bytesTransferred;
+          batchItem.bytesTransferred = currentOverall;
+          batchItem.speedBytesPerSecond = subItem.speedBytesPerSecond;
+          batchItem.status = subItem.status == TransferStatus.failed ? TransferStatus.failed : TransferStatus.running;
+          if (subItem.status == TransferStatus.failed) {
+            batchItem.errorMessage = subItem.errorMessage;
+          }
+          _handleTransferProgress(batchItem);
+        },
+      );
+
+      cumulativeTransferredBytes += fileSize;
+    }
+
+    if (!_cancelledDownloads.contains(batchId)) {
+      batchItem.status = TransferStatus.completed;
+      batchItem.bytesTransferred = totalBytes;
+      batchItem.speedBytesPerSecond = 0;
+      batchItem.errorMessage = null;
+      _handleTransferProgress(batchItem);
+    }
+
+    activeSendingTaskId = null;
+    notifyListeners();
+  }
+
+  Future<void> uploadFilesToCloud({
+    required CloudAccount account,
+    required List<File> files,
+    String remotePath = '/',
+  }) async {
+    if (files.isEmpty) return;
+
+    final batchId = const Uuid().v4();
+    final totalFiles = files.length;
+    int totalBytes = 0;
+    for (final f in files) {
+      try {
+        totalBytes += await f.length();
+      } catch (_) {}
+    }
+
+    final transferItem = TransferItem(
+      id: batchId,
+      filename: totalFiles == 1 ? p.basename(files.first.path) : '$totalFiles Dateien -> ${account.name}',
+      totalBytes: totalBytes,
+      direction: TransferDirection.send,
+      peerDeviceName: account.name,
+      peerIp: account.serverUrl,
+      peerPort: 443,
+      mode: 'Cloud-Sync',
+      status: TransferStatus.running,
+      isBatch: true,
+      batchTotalFiles: totalFiles,
+      batchCurrentFileIndex: 1,
+      batchCurrentFileName: p.basename(files.first.path),
+    );
+
+    _handleTransferProgress(transferItem);
+    activeSendingTaskId = batchId;
+
+    try {
+      await CloudService().uploadBatch(
+        account: account,
+        files: files,
+        remoteDirectory: remotePath,
+        isCancelled: () => _cancelledDownloads.contains(batchId),
+        onProgress: (currentIndex, total, currentName, progress, speed) {
+          transferItem.batchCurrentFileIndex = currentIndex;
+          transferItem.batchCurrentFileName = currentName;
+          transferItem.bytesTransferred = (totalBytes * progress).round();
+          _handleTransferProgress(transferItem);
+        },
+      );
+
+      if (_cancelledDownloads.contains(batchId)) {
+        transferItem.status = TransferStatus.cancelled;
+        transferItem.errorMessage = 'Upload zur Cloud abgebrochen.';
+      } else {
+        transferItem.status = TransferStatus.completed;
+        transferItem.bytesTransferred = totalBytes;
+        transferItem.errorMessage = null;
+      }
+      _handleTransferProgress(transferItem);
+    } catch (e) {
+      transferItem.status = TransferStatus.failed;
+      transferItem.errorMessage = 'Cloud-Upload Fehler: $e';
+      _handleTransferProgress(transferItem);
+    } finally {
+      activeSendingTaskId = null;
+      _cancelledDownloads.remove(batchId);
     }
   }
 

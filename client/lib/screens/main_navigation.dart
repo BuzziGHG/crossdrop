@@ -7,6 +7,7 @@ import '../services/app_state.dart';
 import 'device_list_screen.dart';
 import 'transfers_screen.dart';
 import 'settings_screen.dart';
+import 'cloud_screen.dart';
 
 import '../services/update_service.dart';
 import '../config/constants.dart';
@@ -26,6 +27,7 @@ class _MainNavigationState extends State<MainNavigation> {
   final List<Widget> _screens = const [
     DeviceListScreen(),
     TransfersScreen(),
+    CloudScreen(),
     SettingsScreen(),
   ];
 
@@ -559,6 +561,11 @@ class _MainNavigationState extends State<MainNavigation> {
                       label: const Text('Transfers'),
                     ),
                     const NavigationRailDestination(
+                      icon: Icon(Icons.cloud_sync_outlined),
+                      selectedIcon: Icon(Icons.cloud_sync),
+                      label: Text('Cloud'),
+                    ),
+                    const NavigationRailDestination(
                       icon: Icon(Icons.settings_outlined),
                       selectedIcon: Icon(Icons.settings),
                       label: Text('Einstellungen'),
@@ -606,6 +613,11 @@ class _MainNavigationState extends State<MainNavigation> {
                   ),
                   selectedIcon: const Icon(Icons.swap_vert),
                   label: 'Transfers',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.cloud_sync_outlined),
+                  selectedIcon: Icon(Icons.cloud_sync),
+                  label: 'Cloud',
                 ),
                 const NavigationDestination(
                   icon: Icon(Icons.settings_outlined),

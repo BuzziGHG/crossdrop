@@ -76,4 +76,9 @@ class StorageService {
   bool get autoAccept => _prefs.getBool(AppConstants.keyAutoAccept) ?? true;
   Future<void> setAutoAccept(bool val) =>
       _prefs.setBool(AppConstants.keyAutoAccept, val);
+
+  // Cloud Accounts (Nextcloud / WebDAV)
+  static const String keyCloudAccounts = 'crossdrop_cloud_accounts';
+  List<String> get rawCloudAccounts => _prefs.getStringList(keyCloudAccounts) ?? [];
+  Future<void> saveRawCloudAccounts(List<String> list) => _prefs.setStringList(keyCloudAccounts, list);
 }
